@@ -1,0 +1,18 @@
+{
+  "domain": "grow_conductor",
+  "name": "Grow Conductor",
+  "codeowners": [
+    "@leiklier"
+  ],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/leiklier/grow-conductor",
+  "integration_type": "device",
+  "iot_class": "calculated",
+  "issue_tracker": "https://github.com/leiklier/grow-conductor/issues",
+  "loggers": [
+    "custom_components.grow_conductor"
+  ],
+  "requirements": [],
+  "version": "0.1.0"
+}
