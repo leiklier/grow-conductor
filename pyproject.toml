@@ -1,0 +1,43 @@
+[project]
+name = "grow-conductor"
+version = "0.1.0"
+description = "Photoperiod scheduling for grow lights nobody should ever see — Home Assistant custom integration"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.14.2"
+dependencies = []
+
+[dependency-groups]
+dev = [
+  # Pins homeassistant==2026.6.4 — keep in lockstep with the production instance.
+  "pytest-homeassistant-custom-component==0.13.340",
+  "pytest-asyncio",
+  "ruff>=0.14",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+target-version = "py314"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "UP", "B", "SIM", "C4", "RUF", "TID251"]
+
+[tool.ruff.lint.per-file-ignores]
+# TID251 bans homeassistant imports; it only applies to core/ (belt) —
+# tests/test_purity.py is the suspenders. Everything outside core/ may
+# import homeassistant freely.
+"custom_components/grow_conductor/*.py" = ["TID251"]
+"tests/**" = ["SIM117", "TID251"]
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"homeassistant".msg = "core/ must stay HA-free; only the adapter layer may import homeassistant"
+
+[tool.coverage.run]
+source = ["custom_components/grow_conductor"]
