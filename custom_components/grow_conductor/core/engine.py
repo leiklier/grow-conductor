@@ -85,6 +85,16 @@ class Engine:
         self._snapshot = snapshot
         return self._decide(now)
 
+    def activity_pulse(self, now: datetime) -> Decision:
+        """Instantaneous viewer activity from a trigger entity (rule 1.3b).
+
+        Stamps rule 1.3's activity clock — cutting the light and starting
+        the clear-hold — without sustaining activity; the trigger's level
+        is never part of the snapshot.
+        """
+        self._last_viewer_activity = now
+        return self._decide(now)
+
     def light_reported(self, on: bool | None, now: datetime) -> Decision:
         """Fold the physical light state into the ledger (rule 2.2)."""
         self._light_on = on

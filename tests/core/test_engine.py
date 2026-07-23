@@ -269,3 +269,38 @@ def test_anchor_split_keeps_burning_block() -> None:
     assert engine.spent_s(at(5, 22, 1)) == 60
     d = engine.tick(at(5, 22, 1))
     assert d.want_on  # still burning, fresh budget
+
+
+def test_trigger_pulse_cuts_and_recovers() -> None:
+    """Rule 1.3b: a door-open pulse cuts instantly, relights after the hold."""
+    engine = Engine(target_hours=12.0)
+    d = engine.handle_snapshot(snap(asleep=True, anyone_home=True), at(5, 23))
+    d = follow(engine, d, at(5, 23))
+    assert d.want_on
+
+    d = engine.activity_pulse(at(6, 3, 0))
+    assert not d.want_on and d.state is LightState.COOLDOWN
+    assert d.next_review == at(6, 3, 10)
+    d = follow(engine, d, at(6, 3, 0))
+
+    # Repeated pulses (door swings) extend the hold from the last one.
+    d = engine.activity_pulse(at(6, 3, 5))
+    assert d.state is LightState.COOLDOWN
+    assert d.next_review == at(6, 3, 15)
+
+    d = engine.tick(at(6, 3, 15))
+    assert d.want_on and d.reason is Reason.ASLEEP
+
+
+def test_trigger_pulse_while_observed_still_arms_the_hold() -> None:
+    """Rule 1.3b: a pulse while awake matters once the household sleeps."""
+    engine = Engine()
+    d = engine.handle_snapshot(snap(asleep=False, anyone_home=True), at(5, 22, 50))
+    assert d.state is LightState.OBSERVED
+    d = engine.activity_pulse(at(5, 22, 55))
+    assert d.state is LightState.OBSERVED  # still just observed, no change
+
+    # Sleep three minutes later: the pulse's hold is still running.
+    d = engine.handle_snapshot(snap(asleep=True, anyone_home=True), at(5, 22, 58))
+    assert d.state is LightState.COOLDOWN
+    assert d.next_review == at(5, 23, 5)
