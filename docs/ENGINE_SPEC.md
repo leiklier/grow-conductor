@@ -26,6 +26,10 @@ blocks** over many short ones (plants and humans both dislike flicker).
 - **Veto entities** — signals that force the light off regardless of
   occupancy detection (e.g. the TV is playing, so someone is almost
   certainly looking toward the light even if a sensor disagrees).
+- **Trigger entities** — momentary movement signals at the boundary of
+  the sleep area (e.g. the bedroom door contact). Only their
+  *transitions* carry information; their level does not — an open door
+  all day says nothing about who can currently see the light.
 - **Plant day** — the scheduling period. It starts at the **anchor**
   time (default 22:00 local, the household's typical sleep boundary) and
   runs to the next anchor.
@@ -56,6 +60,15 @@ times — including while asleep or away — so every transition into
 UNOBSERVED implicitly waits out the hold. This single rule covers night
 movement (waking up to visit the bathroom), the morning routine (moving
 around before leaving), and "walked out the door but might step back in".
+
+Rule 1.3b (trigger pulses). Any state transition of a trigger entity
+counts as **instantaneous** viewer activity: it stamps rule 1.3's
+activity clock — cutting the light at once and starting the
+`clear_hold` — but never sustains it. The *level* of a trigger entity
+is never read: a door left open cannot block the schedule (contrast a
+viewer zone, whose sustained activity keeps the household OBSERVED).
+Transitions to or from unknown/unavailable are ignored, so a flapping
+sensor cannot suppress lighting either.
 
 Rule 1.4 (asleep). Otherwise, if the household is asleep, the verdict is
 UNOBSERVED (reason `asleep`). This is the prime window.
