@@ -71,13 +71,17 @@
           "anchor": "Plant-day start",
           "clear_hold_seconds": "Quiet time before lighting",
           "refuge_confirm_seconds": "Refuge confirmation time",
-          "min_block_seconds": "Minimum worthwhile block"
+          "min_block_seconds": "Minimum worthwhile block",
+          "refuge_hold_seconds": "Refuge hold",
+          "exposure_grace_seconds": "Exposure grace"
         },
         "data_description": {
           "anchor": "When the daily light budget resets — ideally around your usual bedtime.",
           "clear_hold_seconds": "How long the viewed rooms must stay quiet before the light may turn on.",
           "refuge_confirm_seconds": "How long an out-of-sight room must be continuously occupied before it counts as refuge.",
-          "min_block_seconds": "Never start a light block shorter than this; avoids end-of-day dribble."
+          "min_block_seconds": "Never start a light block shorter than this; avoids end-of-day dribble.",
+          "refuge_hold_seconds": "How long confirmed refuge survives gaps in the evidence — covers sensor decay while fetching coffee.",
+          "exposure_grace_seconds": "How long viewer activity is tolerated during refuge before the light cuts. Set to 0 for instant cuts even while working from home."
         }
       }
     }

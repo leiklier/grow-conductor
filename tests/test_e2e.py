@@ -271,3 +271,44 @@ async def test_door_trigger_cuts_but_open_door_never_blocks(hass: HomeAssistant,
     await hass.async_block_till_done()
     assert light_is_on(hass)
     assert hass.states.get(state_sensor).state == "lit"
+
+
+async def test_coffee_run_does_not_toggle_wfh_block(hass: HomeAssistant, freezer) -> None:
+    """Rules 1.3c + 1.7 end-to-end: the WFH block survives a coffee run."""
+    freezer.move_to(utc(22, 30))
+    entry = await setup_conductor(hass)
+    state_sensor = entity_id(hass, entry, "sensor", "state")
+
+    # Settle into the office; refuge confirms after 180 s.
+    hass.states.async_set(REFUGE, "on")
+    await hass.async_block_till_done()
+    await advance(hass, freezer, 181)
+    assert light_is_on(hass)
+
+    # Coffee run: kitchen viewer fires AND the office sensor decays.
+    hass.states.async_set(VIEWER, "on")
+    hass.states.async_set(REFUGE, "off")
+    await hass.async_block_till_done()
+    assert light_is_on(hass)  # tolerated exposure — no toggle
+    assert hass.states.get(state_sensor).state == "lit"
+
+    # Two minutes later, back at the desk: still on, never flickered.
+    await advance(hass, freezer, 120)
+    hass.states.async_set(VIEWER, "off")
+    hass.states.async_set(REFUGE, "on")
+    await hass.async_block_till_done()
+    assert light_is_on(hass)
+    assert hass.states.get(state_sensor).state == "lit"
+
+    # A door pulse during refuge is ignored too (rule 1.3b + 1.3c).
+    hass.states.async_set(DOOR, "on")
+    await hass.async_block_till_done()
+    assert light_is_on(hass)
+
+    # But someone SETTLING in the living room still cuts after the grace.
+    hass.states.async_set(VIEWER, "on")
+    await hass.async_block_till_done()
+    assert light_is_on(hass)
+    await advance(hass, freezer, 301)
+    assert not light_is_on(hass)
+    assert hass.states.get(state_sensor).attributes["reason"] == "viewers"

@@ -27,10 +27,12 @@ from homeassistant.helpers.selector import (
 from .const import (
     CONF_ANCHOR,
     CONF_CLEAR_HOLD,
+    CONF_EXPOSURE_GRACE,
     CONF_HOME,
     CONF_LIGHT,
     CONF_MIN_BLOCK,
     CONF_REFUGE_CONFIRM,
+    CONF_REFUGE_HOLD,
     CONF_REFUGES,
     CONF_SLEEP,
     CONF_TRIGGERS,
@@ -103,6 +105,14 @@ def _timing_schema(defaults: dict[str, Any]) -> vol.Schema:
             vol.Required(
                 CONF_REFUGE_CONFIRM,
                 default=defaults.get(CONF_REFUGE_CONFIRM, tunables.refuge_confirm_s),
+            ): _seconds_selector(3600),
+            vol.Required(
+                CONF_REFUGE_HOLD,
+                default=defaults.get(CONF_REFUGE_HOLD, tunables.refuge_hold_s),
+            ): _seconds_selector(7200),
+            vol.Required(
+                CONF_EXPOSURE_GRACE,
+                default=defaults.get(CONF_EXPOSURE_GRACE, tunables.exposure_grace_s),
             ): _seconds_selector(3600),
             vol.Required(
                 CONF_MIN_BLOCK, default=defaults.get(CONF_MIN_BLOCK, tunables.min_block_s)

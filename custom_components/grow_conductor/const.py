@@ -19,6 +19,7 @@ it; ``entry.title`` is the device name):
   e.g. the bedroom door contact. Their level is never read.
 - ``anchor`` (str "HH:MM:SS") — plant-day boundary (rule 2.1).
 - ``clear_hold_seconds`` / ``refuge_confirm_seconds`` /
+  ``refuge_hold_seconds`` / ``exposure_grace_seconds`` /
   ``min_block_seconds`` (number) — ENGINE_SPEC §6 tunables.
 
 Runtime knobs (``number.target_hours``, ``switch.enabled``) are entity
@@ -39,6 +40,8 @@ CONF_TRIGGERS = "trigger_entities"
 CONF_ANCHOR = "anchor"
 CONF_CLEAR_HOLD = "clear_hold_seconds"
 CONF_REFUGE_CONFIRM = "refuge_confirm_seconds"
+CONF_REFUGE_HOLD = "refuge_hold_seconds"
+CONF_EXPOSURE_GRACE = "exposure_grace_seconds"
 CONF_MIN_BLOCK = "min_block_seconds"
 
 DEFAULT_ANCHOR = "22:00:00"

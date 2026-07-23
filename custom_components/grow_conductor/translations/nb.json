@@ -71,13 +71,17 @@
           "anchor": "Plantedagens start",
           "clear_hold_seconds": "Stilletid før tenning",
           "refuge_confirm_seconds": "Bekreftelsestid for rom uten sikt",
-          "min_block_seconds": "Minste blokk verdt å starte"
+          "min_block_seconds": "Minste blokk verdt å starte",
+          "refuge_hold_seconds": "Tilfluktshold",
+          "exposure_grace_seconds": "Eksponeringsfrist"
         },
         "data_description": {
           "anchor": "Når det daglige lysbudsjettet nullstilles — helst rundt vanlig leggetid.",
           "clear_hold_seconds": "Hvor lenge rommene med sikt må være stille før lyset kan tennes.",
           "refuge_confirm_seconds": "Hvor lenge et rom uten sikt må være sammenhengende i bruk før det teller som tilflukt.",
-          "min_block_seconds": "Start aldri en lysblokk kortere enn dette; unngår småstubber på slutten av dagen."
+          "min_block_seconds": "Start aldri en lysblokk kortere enn dette; unngår småstubber på slutten av dagen.",
+          "refuge_hold_seconds": "Hvor lenge bekreftet tilflukt overlever hull i sensorbeviset — dekker sensorutfall mens du henter kaffe.",
+          "exposure_grace_seconds": "Hvor lenge aktivitet med sikt til lyset tolereres under tilflukt før lyset slukkes. Sett til 0 for umiddelbar slukking også på hjemmekontordager."
         }
       }
     }

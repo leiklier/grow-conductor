@@ -8,10 +8,12 @@ from typing import Any
 from .const import (
     CONF_ANCHOR,
     CONF_CLEAR_HOLD,
+    CONF_EXPOSURE_GRACE,
     CONF_HOME,
     CONF_LIGHT,
     CONF_MIN_BLOCK,
     CONF_REFUGE_CONFIRM,
+    CONF_REFUGE_HOLD,
     CONF_REFUGES,
     CONF_SLEEP,
     CONF_TRIGGERS,
@@ -55,6 +57,10 @@ class Config:
                 clear_hold_s=float(options.get(CONF_CLEAR_HOLD, Tunables().clear_hold_s)),
                 refuge_confirm_s=float(
                     options.get(CONF_REFUGE_CONFIRM, Tunables().refuge_confirm_s)
+                ),
+                refuge_hold_s=float(options.get(CONF_REFUGE_HOLD, Tunables().refuge_hold_s)),
+                exposure_grace_s=float(
+                    options.get(CONF_EXPOSURE_GRACE, Tunables().exposure_grace_s)
                 ),
                 min_block_s=float(options.get(CONF_MIN_BLOCK, Tunables().min_block_s)),
             ),
