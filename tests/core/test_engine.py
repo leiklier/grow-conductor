@@ -134,36 +134,106 @@ def test_work_from_home_via_refuge() -> None:
     assert d.want_on and d.state is LightState.LIT and d.reason is Reason.REFUGE
     d = follow(engine, d, at(6, 9, 8))
 
-    # Lunch: walking through a viewer zone cuts instantly...
+    # Office still occupied just before the coffee run (in reality the
+    # publish tick and sensor churn keep bumping refuge evidence).
+    d = engine.tick(at(6, 11, 58))
+    assert d.want_on
+
+    # Coffee run at 12:00 (rule 1.3c): kitchen viewer lights up AND the
+    # office sensor decays — the light STAYS ON, exposure review at 12:05.
     d = engine.handle_snapshot(
         snap(asleep=False, anyone_home=True, viewer_active=True), at(6, 12, 0)
     )
-    assert not d.want_on and d.reason is Reason.VIEWERS
-    d = follow(engine, d, at(6, 12, 0))
-    # ...and refuge dropped with it, so back to square one when it clears.
-    d = engine.handle_snapshot(base, at(6, 12, 28))
-    assert d.state is LightState.OBSERVED and d.reason is Reason.AWAKE_HOME
+    assert d.want_on and d.reason is Reason.REFUGE
+    assert d.next_review == at(6, 12, 5)
 
-    # Back at the desk: confirm again, then wait out the viewer hold
-    # (viewer fell at 12:28, so the hold outlives the refuge confirmation).
-    d = engine.handle_snapshot(refuge, at(6, 12, 30))
-    d = engine.tick(at(6, 12, 33))
+    # Back toward the desk at 12:03: episode stayed under exposure_grace,
+    # so no cut ever happened and no hold applies (still on refuge hold).
+    d = engine.handle_snapshot(base, at(6, 12, 3))
+    assert d.want_on and d.reason is Reason.REFUGE
+    d = engine.handle_snapshot(refuge, at(6, 12, 4))
+    assert d.want_on and d.reason is Reason.REFUGE
+    assert engine.light_on is True  # never toggled through the whole trip
+
+
+def test_sustained_exposure_in_refuge_cuts_at_grace() -> None:
+    """Rule 1.3c: settling within sight still cuts, with the normal hold."""
+    engine = Engine()
+    both = snap(asleep=False, anyone_home=True, refuge_active=True, viewer_active=True)
+    refuge = snap(asleep=False, anyone_home=True, refuge_active=True)
+    engine.handle_snapshot(refuge, at(6, 9, 0))
+    d = engine.tick(at(6, 9, 3))
+    d = follow(engine, d, at(6, 9, 3))
+    assert d.want_on
+
+    # Someone settles in the living room at 12:00 while the office stays
+    # occupied: tolerated until 12:05, then OBSERVED.
+    d = engine.handle_snapshot(both, at(6, 12, 0))
+    assert d.want_on and d.next_review == at(6, 12, 5)
+    d = engine.tick(at(6, 12, 5))
+    assert not d.want_on and d.state is LightState.OBSERVED and d.reason is Reason.VIEWERS
+    d = follow(engine, d, at(6, 12, 5))
+
+    # They leave at 12:20: sustained episode imposes the clear_hold.
+    d = engine.handle_snapshot(refuge, at(6, 12, 20))
     assert d.state is LightState.COOLDOWN
-    assert d.next_review == at(6, 12, 38)
-    d = engine.tick(at(6, 12, 38))
+    assert d.next_review == at(6, 12, 30)
+    d = engine.tick(at(6, 12, 30))
     assert d.want_on and d.reason is Reason.REFUGE
 
 
-def test_refuge_release_is_immediate() -> None:
-    """Rule 1.7: losing refuge evidence goes straight to OBSERVED."""
+def test_refuge_holds_across_gaps_and_releases_after_hold() -> None:
+    """Rule 1.7: confirmed refuge survives dropouts up to refuge_hold."""
+    engine = Engine()
+    refuge = snap(asleep=False, anyone_home=True, refuge_active=True)
+    base = snap(asleep=False, anyone_home=True)
+    engine.handle_snapshot(refuge, at(6, 9, 0))
+    d = engine.tick(at(6, 9, 3))
+    d = follow(engine, d, at(6, 9, 3))
+    assert d.want_on
+
+    # Sensor decays at 10:00: held, with the lapse instant as the review.
+    d = engine.handle_snapshot(base, at(6, 10, 0))
+    assert d.want_on and d.reason is Reason.REFUGE
+    assert d.next_review == at(6, 10, 10)
+
+    # Reactivation within the hold: no re-confirmation needed.
+    d = engine.handle_snapshot(refuge, at(6, 10, 5))
+    assert d.want_on and d.reason is Reason.REFUGE
+
+    # A gap that outlives the hold releases refuge.
+    d = engine.handle_snapshot(base, at(6, 10, 6))
+    d = engine.tick(at(6, 10, 16))
+    assert not d.want_on and d.state is LightState.OBSERVED and d.reason is Reason.AWAKE_HOME
+
+    # Re-engagement afterwards must re-confirm from zero (rule 1.7).
+    d = engine.handle_snapshot(refuge, at(6, 10, 20))
+    assert not d.want_on and d.next_review == at(6, 10, 23)
+
+
+def test_unconfirmed_refuge_dropout_resets_confirmation() -> None:
+    """Rule 1.7: while unconfirmed, any gap restarts the clock."""
+    engine = Engine()
+    refuge = snap(asleep=False, anyone_home=True, refuge_active=True)
+    base = snap(asleep=False, anyone_home=True)
+    engine.handle_snapshot(refuge, at(6, 9, 0))
+    engine.handle_snapshot(base, at(6, 9, 1))
+    d = engine.handle_snapshot(refuge, at(6, 9, 2))
+    assert not d.want_on
+    assert d.next_review == at(6, 9, 5)  # confirmation restarted at 9:02
+
+
+def test_trigger_pulse_is_ignored_during_refuge() -> None:
+    """Rules 1.3b + 1.3c: pulses are transient by definition."""
     engine = Engine()
     refuge = snap(asleep=False, anyone_home=True, refuge_active=True)
     engine.handle_snapshot(refuge, at(6, 9, 0))
     d = engine.tick(at(6, 9, 3))
     d = follow(engine, d, at(6, 9, 3))
     assert d.want_on
-    d = engine.handle_snapshot(snap(asleep=False, anyone_home=True), at(6, 10, 0))
-    assert not d.want_on and d.state is LightState.OBSERVED
+
+    d = engine.activity_pulse(at(6, 11, 0))
+    assert d.want_on and d.state is LightState.LIT and d.reason is Reason.REFUGE
 
 
 def test_cap_is_exact_and_min_block_guards_restarts() -> None:

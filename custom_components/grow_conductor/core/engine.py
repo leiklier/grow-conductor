@@ -8,12 +8,12 @@ stable until ``next_review`` (rule 3.2).
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from .budget import PlantDayLedger
 from .model import Decision, InputSnapshot, LightState, Reason
 from .tunables import DEFAULT_TARGET_HOURS, Tunables, clamp_target_hours
-from .visibility import Verdict, assess
+from .visibility import RefugeView, Verdict, ViewerMemory, assess
 
 
 class Engine:
@@ -26,8 +26,14 @@ class Engine:
         self._target_s = clamp_target_hours(target_hours) * 3600.0
         self._ledger = PlantDayLedger(self._tunables)
         self._snapshot = InputSnapshot()
-        self._last_viewer_activity: datetime | None = None
+        # Viewer memory (rules 1.3/1.3b/1.3c).
+        self._viewer_active_since: datetime | None = None
+        self._viewer_last_end: datetime | None = None
+        self._viewer_sustained_end: datetime | None = None
+        # Refuge memory (rule 1.7).
         self._refuge_since: datetime | None = None
+        self._refuge_last_active: datetime | None = None
+        self._refuge_confirmed = False
         self._enabled = True
         self._light_on: bool | None = None
         self._decision: Decision | None = None
@@ -72,16 +78,34 @@ class Engine:
     def handle_snapshot(self, snapshot: InputSnapshot, now: datetime) -> Decision:
         """Fold a normalized input snapshot into the engine."""
         previous = self._snapshot
-        # Rule 1.3: remember viewer activity while it lasts and stamp its
-        # falling edge, so the hold always counts from the end of activity.
-        if snapshot.viewer_active or previous.viewer_active:
-            self._last_viewer_activity = now
-        # Rule 1.7: the confirmation clock starts on the rising edge only;
-        # unrelated snapshot churn while active must not reset it.
+        # Rule 1.3: track viewer episodes edge-to-edge, so holds count
+        # from the end of activity and 1.3c can measure episode length.
+        if snapshot.viewer_active and not previous.viewer_active:
+            self._viewer_active_since = now
+        elif not snapshot.viewer_active and previous.viewer_active:
+            self._viewer_last_end = now
+            started = self._viewer_active_since
+            if (
+                started is not None
+                and (now - started).total_seconds() >= self._tunables.exposure_grace_s
+            ):
+                self._viewer_sustained_end = now
+            self._viewer_active_since = None
+        # Rule 1.7: an unconfirmed engagement restarts its confirmation
+        # clock on every rising edge (continuity requirement); a stale
+        # confirmed engagement (gap > refuge_hold) starts over entirely.
         if snapshot.refuge_active and not previous.refuge_active:
-            self._refuge_since = now
-        elif not snapshot.refuge_active:
-            self._refuge_since = None
+            lapsed = (
+                self._refuge_last_active is None
+                or (now - self._refuge_last_active).total_seconds() >= self._tunables.refuge_hold_s
+            )
+            if lapsed or not self._refuge_confirmed:
+                self._refuge_since = now
+                self._refuge_confirmed = False
+        elif not snapshot.refuge_active and previous.refuge_active:
+            # Falling edge: the evidence was present up to this instant —
+            # the rule-1.7 hold counts from here.
+            self._refuge_last_active = now
         self._snapshot = snapshot
         return self._decide(now)
 
@@ -90,9 +114,10 @@ class Engine:
 
         Stamps rule 1.3's activity clock — cutting the light and starting
         the clear-hold — without sustaining activity; the trigger's level
-        is never part of the snapshot.
+        is never part of the snapshot. During confirmed refuge, rule 1.3c
+        ignores pulses entirely (they are by definition transient).
         """
-        self._last_viewer_activity = now
+        self._viewer_last_end = now
         return self._decide(now)
 
     def light_reported(self, on: bool | None, now: datetime) -> Decision:
@@ -119,10 +144,44 @@ class Engine:
 
     # -- decision (rule 3.1) ------------------------------------------------------
 
+    def _refuge_view(self, now: datetime) -> RefugeView:
+        """Advance the rule-1.7 confirm latch / hold expiry, then report."""
+        if self._snapshot.refuge_active:
+            self._refuge_last_active = now
+            if (
+                self._refuge_since is not None
+                and (now - self._refuge_since).total_seconds() >= self._tunables.refuge_confirm_s
+            ):
+                self._refuge_confirmed = True
+        elif (
+            self._refuge_last_active is None
+            or (now - self._refuge_last_active).total_seconds() >= self._tunables.refuge_hold_s
+        ):
+            self._refuge_since = None
+            self._refuge_confirmed = False
+
+        ready_at = None
+        if self._snapshot.refuge_active and not self._refuge_confirmed:
+            assert self._refuge_since is not None
+            ready_at = self._refuge_since + timedelta(seconds=self._tunables.refuge_confirm_s)
+        held_until = None
+        if self._refuge_confirmed and not self._snapshot.refuge_active:
+            assert self._refuge_last_active is not None
+            held_until = self._refuge_last_active + timedelta(seconds=self._tunables.refuge_hold_s)
+        return RefugeView(engaged=self._refuge_confirmed, ready_at=ready_at, held_until=held_until)
+
     def _decide(self, now: datetime) -> Decision:
         self._ledger.roll(now)
         verdict = assess(
-            self._snapshot, now, self._last_viewer_activity, self._refuge_since, self._tunables
+            self._snapshot,
+            now,
+            ViewerMemory(
+                active_since=self._viewer_active_since,
+                last_end=self._viewer_last_end,
+                sustained_end=self._viewer_sustained_end,
+            ),
+            self._refuge_view(now),
+            self._tunables,
         )
         reviews = [self._ledger.next_anchor(now)]
 
@@ -137,11 +196,11 @@ class Engine:
         return decision
 
     def _decide_dark(self, verdict: Verdict, reviews: list[datetime]) -> Decision:
+        if verdict.review_at is not None:
+            reviews.append(verdict.review_at)
         if verdict.cooldown_until is not None:
             reviews.append(verdict.cooldown_until)
             return Decision(False, LightState.COOLDOWN, None, min(reviews))
-        if verdict.refuge_ready_at is not None:
-            reviews.append(verdict.refuge_ready_at)
         return Decision(False, LightState.OBSERVED, verdict.reason, min(reviews))
 
     def _decide_light(self, verdict: Verdict, now: datetime, reviews: list[datetime]) -> Decision:
@@ -151,5 +210,7 @@ class Engine:
         headroom = self._target_s - spent
         if self._light_on is not True and headroom < self._tunables.min_block_s:  # rule 2.5
             return Decision(False, LightState.SATED, Reason.LOW_HEADROOM, min(reviews))
+        if verdict.review_at is not None:  # a tolerated exposure may mature (1.3c)
+            reviews.append(verdict.review_at)
         reviews.append(self._ledger.cap_instant(now, self._target_s))
         return Decision(True, LightState.LIT, verdict.reason, min(reviews))
