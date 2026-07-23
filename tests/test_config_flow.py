@@ -14,6 +14,7 @@ from custom_components.grow_conductor.const import (
     CONF_REFUGE_CONFIRM,
     CONF_REFUGES,
     CONF_SLEEP,
+    CONF_TRIGGERS,
     CONF_VETOES,
     CONF_VIEWERS,
     DOMAIN,
@@ -38,6 +39,7 @@ async def test_full_flow_creates_entry_with_options_contract(hass: HomeAssistant
             CONF_VIEWERS: ["binary_sensor.sofakrok_occupancy"],
             CONF_REFUGES: ["binary_sensor.kontor_occupancy"],
             CONF_VETOES: ["media_player.sofakrok_tv"],
+            CONF_TRIGGERS: ["binary_sensor.soverom_dor"],
         },
     )
     assert result["type"] == "create_entry"
@@ -50,6 +52,7 @@ async def test_full_flow_creates_entry_with_options_contract(hass: HomeAssistant
         CONF_VIEWERS: ["binary_sensor.sofakrok_occupancy"],
         CONF_REFUGES: ["binary_sensor.kontor_occupancy"],
         CONF_VETOES: ["media_player.sofakrok_tv"],
+        CONF_TRIGGERS: ["binary_sensor.soverom_dor"],
     }
 
 
@@ -121,7 +124,8 @@ async def test_options_flow_signals_can_clear_entities(hass: HomeAssistant) -> N
     )
     # Submit without the sleep entity: it is cleared, timing survives.
     result = await hass.config_entries.options.async_configure(
-        result["flow_id"], {CONF_VIEWERS: [], CONF_REFUGES: [], CONF_VETOES: []}
+        result["flow_id"],
+        {CONF_VIEWERS: [], CONF_REFUGES: [], CONF_VETOES: [], CONF_TRIGGERS: []},
     )
     assert result["type"] == "create_entry"
     assert CONF_SLEEP not in result["data"]

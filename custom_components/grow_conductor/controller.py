@@ -96,6 +96,12 @@ class GrowConductorController:
                     self.hass, self.config.input_entities, self._on_input_event
                 )
             )
+        if self.config.trigger_entities:
+            self._unsubs.append(
+                async_track_state_change_event(
+                    self.hass, self.config.trigger_entities, self._on_trigger_event
+                )
+            )
         self._unsubs.append(
             async_track_state_change_event(
                 self.hass, [self.config.light_entity], self._on_light_event
@@ -177,6 +183,21 @@ class GrowConductorController:
     def _on_input_event(self, event: Event[EventStateChangedData]) -> None:
         now = dt_util.now()
         self._after_decision(self.engine.handle_snapshot(self._build_snapshot(), now), now)
+
+    @callback
+    def _on_trigger_event(self, event: Event[EventStateChangedData]) -> None:
+        """Rule 1.3b: real transitions pulse the activity clock; the level,
+        unknown flaps, and attribute-only writes never do."""
+        old = event.data.get("old_state")
+        new = event.data.get("new_state")
+        if old is None or new is None:
+            return
+        if old.state in _UNKNOWN_STATES or new.state in _UNKNOWN_STATES:
+            return
+        if old.state == new.state:
+            return
+        now = dt_util.now()
+        self._after_decision(self.engine.activity_pulse(now), now)
 
     @callback
     def _on_light_event(self, event: Event[EventStateChangedData]) -> None:

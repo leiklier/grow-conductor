@@ -21,14 +21,16 @@
           "home_entity": "Noen hjemme",
           "viewer_entities": "Rom med sikt til lyset",
           "refuge_entities": "Rom uten sikt",
-          "veto_entities": "Harde vetoer"
+          "veto_entities": "Harde vetoer",
+          "trigger_entities": "Bevegelsestriggere"
         },
         "data_description": {
           "sleep_entity": "På mens husstanden sover — det beste vinduet for å kjøre lyset.",
           "home_entity": "En sone, person, sporer eller sensor som forteller om noen er hjemme.",
           "viewer_entities": "Bevegelsessensorer som dekker alle steder lyset er synlig fra. Aktivitet her slukker lyset umiddelbart (nattlig bevegelse, morgenrutine).",
           "refuge_entities": "Bevegelsessensorer for rom lyset IKKE er synlig fra, f.eks. hjemmekontor. Vedvarende tilstedeværelse der lar lyset stå på mens du er våken hjemme (hjemmekontor).",
-          "veto_entities": "Signaler som tvinger lyset av uansett, f.eks. TV-en i samme rom."
+          "veto_entities": "Signaler som tvinger lyset av uansett, f.eks. TV-en i samme rom.",
+          "trigger_entities": "Enheter der en tilstandsendring betyr at noen beveger seg ved sovegrensen, f.eks. soveromsdørens kontakt. Hver endring slukker lyset og starter stilletiden; selve tilstanden ignoreres, så en åpen dør blokkerer aldri lysplanen."
         }
       }
     },
@@ -51,14 +53,16 @@
           "home_entity": "Noen hjemme",
           "viewer_entities": "Rom med sikt til lyset",
           "refuge_entities": "Rom uten sikt",
-          "veto_entities": "Harde vetoer"
+          "veto_entities": "Harde vetoer",
+          "trigger_entities": "Bevegelsestriggere"
         },
         "data_description": {
           "sleep_entity": "På mens husstanden sover — det beste vinduet for å kjøre lyset.",
           "home_entity": "En sone, person, sporer eller sensor som forteller om noen er hjemme.",
           "viewer_entities": "Bevegelsessensorer som dekker alle steder lyset er synlig fra.",
           "refuge_entities": "Bevegelse i rom uten sikt til lyset; vedvarende tilstedeværelse tillater kjøring på dagtid.",
-          "veto_entities": "Signaler som tvinger lyset av uansett."
+          "veto_entities": "Signaler som tvinger lyset av uansett.",
+          "trigger_entities": "Enheter der en tilstandsendring betyr at noen beveger seg ved sovegrensen, f.eks. soveromsdørens kontakt. Hver endring slukker lyset og starter stilletiden; selve tilstanden ignoreres, så en åpen dør blokkerer aldri lysplanen."
         }
       },
       "timing": {

@@ -64,6 +64,11 @@ The flow asks for the light switch and the visibility signals:
   while you are awake at home — the work-from-home case.
 - **Hard vetoes** — signals that force the light off regardless, e.g.
   the TV in the same room.
+- **Movement triggers** — entities whose state *changes* mean someone
+  is on the move near the sleep boundary, e.g. the bedroom door
+  contact: every change cuts the light instantly and starts the
+  quiet-time hold. Only transitions count — a door left open all day
+  never blocks the schedule.
 
 All signals are optional, but with none configured the fail-safe keeps
 the light permanently off. Timing tunables (anchor, quiet-time hold,

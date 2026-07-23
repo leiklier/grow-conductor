@@ -21,14 +21,16 @@
           "home_entity": "Anyone home",
           "viewer_entities": "Rooms with a view of the light",
           "refuge_entities": "Out-of-sight rooms",
-          "veto_entities": "Hard vetoes"
+          "veto_entities": "Hard vetoes",
+          "trigger_entities": "Movement triggers"
         },
         "data_description": {
           "sleep_entity": "On while the household sleeps — the prime window for running the light.",
           "home_entity": "A zone, person, tracker or sensor that tells whether anyone is home.",
           "viewer_entities": "Occupancy sensors covering every spot the light is visible from. Any activity here cuts the light immediately (night movement, morning routine).",
           "refuge_entities": "Occupancy sensors for rooms the light is NOT visible from, e.g. a home office. Sustained presence there lets the light run while you are awake at home (working from home).",
-          "veto_entities": "Signals that force the light off regardless of occupancy, e.g. the TV in the same room."
+          "veto_entities": "Signals that force the light off regardless of occupancy, e.g. the TV in the same room.",
+          "trigger_entities": "Entities whose state CHANGES mean someone is moving near the sleep boundary, e.g. the bedroom door contact. Each change cuts the light and starts the quiet-time hold; the state itself is ignored, so a door left open never blocks the schedule."
         }
       }
     },
@@ -51,14 +53,16 @@
           "home_entity": "Anyone home",
           "viewer_entities": "Rooms with a view of the light",
           "refuge_entities": "Out-of-sight rooms",
-          "veto_entities": "Hard vetoes"
+          "veto_entities": "Hard vetoes",
+          "trigger_entities": "Movement triggers"
         },
         "data_description": {
           "sleep_entity": "On while the household sleeps — the prime window for running the light.",
           "home_entity": "A zone, person, tracker or sensor that tells whether anyone is home.",
           "viewer_entities": "Occupancy sensors covering every spot the light is visible from.",
           "refuge_entities": "Occupancy in rooms without sight of the light; sustained presence allows daytime runs.",
-          "veto_entities": "Signals that force the light off regardless of occupancy."
+          "veto_entities": "Signals that force the light off regardless of occupancy.",
+          "trigger_entities": "Entities whose state CHANGES mean someone is moving near the sleep boundary, e.g. the bedroom door contact. Each change cuts the light and starts the quiet-time hold; the state itself is ignored, so a door left open never blocks the schedule."
         }
       },
       "timing": {

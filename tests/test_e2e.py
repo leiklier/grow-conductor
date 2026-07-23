@@ -23,6 +23,7 @@ from custom_components.grow_conductor.const import (
     CONF_LIGHT,
     CONF_REFUGES,
     CONF_SLEEP,
+    CONF_TRIGGERS,
     CONF_VETOES,
     CONF_VIEWERS,
     DOMAIN,
@@ -34,6 +35,7 @@ HOME = "zone.home"
 VIEWER = "binary_sensor.stue"
 REFUGE = "binary_sensor.kontor"
 VETO = "media_player.tv"
+DOOR = "binary_sensor.soverom_dor"
 
 OPTIONS: dict[str, Any] = {
     CONF_LIGHT: LIGHT,
@@ -42,6 +44,7 @@ OPTIONS: dict[str, Any] = {
     CONF_VIEWERS: [VIEWER],
     CONF_REFUGES: [REFUGE],
     CONF_VETOES: [VETO],
+    CONF_TRIGGERS: [DOOR],
 }
 
 
@@ -59,6 +62,7 @@ async def setup_conductor(hass: HomeAssistant) -> MockConfigEntry:
     hass.states.async_set(VIEWER, "off")
     hass.states.async_set(REFUGE, "off")
     hass.states.async_set(VETO, "off")
+    hass.states.async_set(DOOR, "off")
     await hass.async_block_till_done()
 
     entry = MockConfigEntry(domain=DOMAIN, title="Stue plantelys", data={}, options=OPTIONS)
@@ -142,6 +146,7 @@ async def test_veto_and_refuge(hass: HomeAssistant, freezer) -> None:
 
     # TV off again: immediate relight (no release hold).
     hass.states.async_set(VETO, "off")
+    hass.states.async_set(DOOR, "off")
     await hass.async_block_till_done()
     assert light_is_on(hass)
 
@@ -235,3 +240,34 @@ async def test_restore_across_reload(hass: HomeAssistant, freezer) -> None:
     # The two delivered hours survived the reload (rule 5.1).
     lit_today = entity_id(hass, entry, "sensor", "lit_today")
     assert float(hass.states.get(lit_today).state) == 2.0
+
+
+async def test_door_trigger_cuts_but_open_door_never_blocks(hass: HomeAssistant, freezer) -> None:
+    """Rule 1.3b end-to-end: transitions pulse, the level is ignored."""
+    freezer.move_to(utc(22, 30))
+    entry = await setup_conductor(hass)
+    state_sensor = entity_id(hass, entry, "sensor", "state")
+
+    hass.states.async_set(SLEEP, "on")
+    await hass.async_block_till_done()
+    assert light_is_on(hass)
+
+    # Bedroom door opens at night: instant cut, before any occupancy fires.
+    hass.states.async_set(DOOR, "on")
+    await hass.async_block_till_done()
+    assert not light_is_on(hass)
+    assert hass.states.get(state_sensor).state == "cooldown"
+
+    # The door STAYS open — after the hold the light returns anyway,
+    # because a trigger's level is never read.
+    await advance(hass, freezer, 601)
+    assert light_is_on(hass)
+    assert hass.states.get(state_sensor).state == "lit"
+
+    # Unavailable flaps are not transitions: no pulse, no cut.
+    hass.states.async_set(DOOR, "unavailable")
+    await hass.async_block_till_done()
+    hass.states.async_set(DOOR, "on")
+    await hass.async_block_till_done()
+    assert light_is_on(hass)
+    assert hass.states.get(state_sensor).state == "lit"

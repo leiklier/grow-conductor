@@ -33,6 +33,7 @@ from .const import (
     CONF_REFUGE_CONFIRM,
     CONF_REFUGES,
     CONF_SLEEP,
+    CONF_TRIGGERS,
     CONF_VETOES,
     CONF_VIEWERS,
     DEFAULT_ANCHOR,
@@ -74,6 +75,9 @@ def _signals_schema(defaults: dict[str, Any]) -> vol.Schema:
                 CONF_REFUGES, default=list(defaults.get(CONF_REFUGES, []))
             ): _MULTI_OCCUPANCY_SELECTOR,
             vol.Optional(CONF_VETOES, default=list(defaults.get(CONF_VETOES, []))): _VETO_SELECTOR,
+            vol.Optional(
+                CONF_TRIGGERS, default=list(defaults.get(CONF_TRIGGERS, []))
+            ): _MULTI_OCCUPANCY_SELECTOR,
         }
     )
 
@@ -158,7 +162,15 @@ class GrowConductorOptionsFlow(OptionsFlow):
             options = {
                 k: v
                 for k, v in dict(self.config_entry.options).items()
-                if k not in (CONF_SLEEP, CONF_HOME, CONF_VIEWERS, CONF_REFUGES, CONF_VETOES)
+                if k
+                not in (
+                    CONF_SLEEP,
+                    CONF_HOME,
+                    CONF_VIEWERS,
+                    CONF_REFUGES,
+                    CONF_VETOES,
+                    CONF_TRIGGERS,
+                )
             }
             options.update(user_input)
             return self.async_create_entry(data=options)

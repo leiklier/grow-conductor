@@ -14,6 +14,9 @@ it; ``entry.title`` is the device name):
   settled out of sight (rule 1.7).
 - ``veto_entities`` (list[str]) — hard "someone is watching" signals,
   e.g. the TV media_player (rule 1.2).
+- ``trigger_entities`` (list[str]) — momentary movement signals whose
+  state *transitions* pulse the viewer-activity clock (rule 1.3b),
+  e.g. the bedroom door contact. Their level is never read.
 - ``anchor`` (str "HH:MM:SS") — plant-day boundary (rule 2.1).
 - ``clear_hold_seconds`` / ``refuge_confirm_seconds`` /
   ``min_block_seconds`` (number) — ENGINE_SPEC §6 tunables.
@@ -32,6 +35,7 @@ CONF_HOME = "home_entity"
 CONF_VIEWERS = "viewer_entities"
 CONF_REFUGES = "refuge_entities"
 CONF_VETOES = "veto_entities"
+CONF_TRIGGERS = "trigger_entities"
 CONF_ANCHOR = "anchor"
 CONF_CLEAR_HOLD = "clear_hold_seconds"
 CONF_REFUGE_CONFIRM = "refuge_confirm_seconds"
