@@ -1,0 +1,131 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Nytt plantelys",
+        "description": "Grow Conductor holder et plantelys på i et daglig timemål, men bare når ingen kan se det.",
+        "data": {
+          "name": "Navn",
+          "light_entity": "Plantelysbryter"
+        },
+        "data_description": {
+          "name": "Enhetsnavn, f.eks. 'Sofakrok plantelys'.",
+          "light_entity": "Bryteren eller lyset som styrer plantelyset."
+        }
+      },
+      "signals": {
+        "title": "Synlighetssignaler",
+        "description": "Slik vet dirigenten om noen kan se lyset. Alle signaler er valgfrie, men uten noen konfigurert vil lyset aldri slå seg på.",
+        "data": {
+          "sleep_entity": "Husstanden sover",
+          "home_entity": "Noen hjemme",
+          "viewer_entities": "Rom med sikt til lyset",
+          "refuge_entities": "Rom uten sikt",
+          "veto_entities": "Harde vetoer",
+          "trigger_entities": "Bevegelsestriggere"
+        },
+        "data_description": {
+          "sleep_entity": "På mens husstanden sover — det beste vinduet for å kjøre lyset.",
+          "home_entity": "En sone, person, sporer eller sensor som forteller om noen er hjemme.",
+          "viewer_entities": "Bevegelsessensorer som dekker alle steder lyset er synlig fra. Aktivitet her slukker lyset umiddelbart (nattlig bevegelse, morgenrutine).",
+          "refuge_entities": "Bevegelsessensorer for rom lyset IKKE er synlig fra, f.eks. hjemmekontor. Vedvarende tilstedeværelse der lar lyset stå på mens du er våken hjemme (hjemmekontor).",
+          "veto_entities": "Signaler som tvinger lyset av uansett, f.eks. TV-en i samme rom.",
+          "trigger_entities": "Enheter der en tilstandsendring betyr at noen beveger seg ved sovegrensen, f.eks. soveromsdørens kontakt. Hver endring slukker lyset og starter stilletiden; selve tilstanden ignoreres, så en åpen dør blokkerer aldri lysplanen."
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "Dette plantelyset dirigeres allerede."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "menu_options": {
+          "signals": "Synlighetssignaler",
+          "timing": "Tidsinnstillinger"
+        }
+      },
+      "signals": {
+        "title": "Synlighetssignaler",
+        "data": {
+          "sleep_entity": "Husstanden sover",
+          "home_entity": "Noen hjemme",
+          "viewer_entities": "Rom med sikt til lyset",
+          "refuge_entities": "Rom uten sikt",
+          "veto_entities": "Harde vetoer",
+          "trigger_entities": "Bevegelsestriggere"
+        },
+        "data_description": {
+          "sleep_entity": "På mens husstanden sover — det beste vinduet for å kjøre lyset.",
+          "home_entity": "En sone, person, sporer eller sensor som forteller om noen er hjemme.",
+          "viewer_entities": "Bevegelsessensorer som dekker alle steder lyset er synlig fra.",
+          "refuge_entities": "Bevegelse i rom uten sikt til lyset; vedvarende tilstedeværelse tillater kjøring på dagtid.",
+          "veto_entities": "Signaler som tvinger lyset av uansett.",
+          "trigger_entities": "Enheter der en tilstandsendring betyr at noen beveger seg ved sovegrensen, f.eks. soveromsdørens kontakt. Hver endring slukker lyset og starter stilletiden; selve tilstanden ignoreres, så en åpen dør blokkerer aldri lysplanen."
+        }
+      },
+      "timing": {
+        "title": "Tidsinnstillinger",
+        "data": {
+          "anchor": "Plantedagens start",
+          "clear_hold_seconds": "Stilletid før tenning",
+          "refuge_confirm_seconds": "Bekreftelsestid for rom uten sikt",
+          "min_block_seconds": "Minste blokk verdt å starte",
+          "refuge_hold_seconds": "Tilfluktshold",
+          "exposure_grace_seconds": "Eksponeringsfrist"
+        },
+        "data_description": {
+          "anchor": "Når det daglige lysbudsjettet nullstilles — helst rundt vanlig leggetid.",
+          "clear_hold_seconds": "Hvor lenge rommene med sikt må være stille før lyset kan tennes.",
+          "refuge_confirm_seconds": "Hvor lenge et rom uten sikt må være sammenhengende i bruk før det teller som tilflukt.",
+          "min_block_seconds": "Start aldri en lysblokk kortere enn dette; unngår småstubber på slutten av dagen.",
+          "refuge_hold_seconds": "Hvor lenge bekreftet tilflukt overlever hull i sensorbeviset — dekker sensorutfall mens du henter kaffe.",
+          "exposure_grace_seconds": "Hvor lenge aktivitet med sikt til lyset tolereres under tilflukt før lyset slukkes. Sett til 0 for umiddelbar slukking også på hjemmekontordager."
+        }
+      }
+    }
+  },
+  "entity": {
+    "switch": {
+      "enabled": {
+        "name": "Aktivert"
+      }
+    },
+    "number": {
+      "target_hours": {
+        "name": "Måltimer"
+      }
+    },
+    "sensor": {
+      "state": {
+        "name": "Tilstand",
+        "state": {
+          "lit": "Tent",
+          "observed": "Observert",
+          "cooldown": "Nedkjøling",
+          "sated": "Mett",
+          "standby": "Hvilemodus"
+        },
+        "state_attributes": {
+          "reason": {
+            "name": "Årsak",
+            "state": {
+              "asleep": "Husstanden sover",
+              "away": "Ingen hjemme",
+              "refuge": "Beboerne er ute av syne",
+              "veto": "Hardt veto aktivt",
+              "viewers": "Aktivitet med sikt til lyset",
+              "awake_home": "Våken hjemme",
+              "target_reached": "Dagsmålet nådd",
+              "low_headroom": "For lite budsjett igjen"
+            }
+          }
+        }
+      },
+      "lit_today": {
+        "name": "Tent i dag"
+      }
+    }
+  }
+}

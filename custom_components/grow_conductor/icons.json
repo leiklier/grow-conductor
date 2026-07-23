@@ -1,0 +1,29 @@
+{
+  "entity": {
+    "switch": {
+      "enabled": {
+        "default": "mdi:sprout"
+      }
+    },
+    "number": {
+      "target_hours": {
+        "default": "mdi:sun-clock-outline"
+      }
+    },
+    "sensor": {
+      "state": {
+        "default": "mdi:eye-off-outline",
+        "state": {
+          "lit": "mdi:lightbulb-on",
+          "observed": "mdi:eye",
+          "cooldown": "mdi:timer-sand",
+          "sated": "mdi:check-circle-outline",
+          "standby": "mdi:pause-circle-outline"
+        }
+      },
+      "lit_today": {
+        "default": "mdi:timer-outline"
+      }
+    }
+  }
+}

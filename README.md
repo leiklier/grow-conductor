@@ -61,13 +61,23 @@ The flow asks for the light switch and the visibility signals:
   the quiet-time hold (night movement, morning routine — same rule).
 - **Out-of-sight rooms** — occupancy for rooms that *cannot* see the
   light (home office). Sustained presence there allows daytime runs
-  while you are awake at home — the work-from-home case.
+  while you are awake at home — the work-from-home case. Refuge blocks
+  are deliberately tolerant: a coffee run through a viewer room neither
+  cuts the light nor resets anything (exposure grace), and short sensor
+  dropouts don't release the block (refuge hold). Settling within sight
+  of the light still cuts it.
 - **Hard vetoes** — signals that force the light off regardless, e.g.
   the TV in the same room.
+- **Movement triggers** — entities whose state *changes* mean someone
+  is on the move near the sleep boundary, e.g. the bedroom door
+  contact: every change cuts the light instantly and starts the
+  quiet-time hold. Only transitions count — a door left open all day
+  never blocks the schedule.
 
 All signals are optional, but with none configured the fail-safe keeps
 the light permanently off. Timing tunables (anchor, quiet-time hold,
-refuge confirmation, minimum block) live under Options → Timing.
+refuge confirmation/hold, exposure grace, minimum block) live under
+Options → Timing.
 
 ## Releases & channels
 

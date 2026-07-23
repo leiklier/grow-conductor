@@ -1,0 +1,131 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "New grow light",
+        "description": "Grow Conductor keeps a grow light on for a daily target of hours, but only while nobody can see it.",
+        "data": {
+          "name": "Name",
+          "light_entity": "Grow light switch"
+        },
+        "data_description": {
+          "name": "Device name, e.g. 'Sofakrok plantelys'.",
+          "light_entity": "The switch or light that powers the grow light."
+        }
+      },
+      "signals": {
+        "title": "Visibility signals",
+        "description": "How the conductor knows whether someone could see the light. Every signal is optional, but with none configured the light will never turn on.",
+        "data": {
+          "sleep_entity": "Household asleep",
+          "home_entity": "Anyone home",
+          "viewer_entities": "Rooms with a view of the light",
+          "refuge_entities": "Out-of-sight rooms",
+          "veto_entities": "Hard vetoes",
+          "trigger_entities": "Movement triggers"
+        },
+        "data_description": {
+          "sleep_entity": "On while the household sleeps — the prime window for running the light.",
+          "home_entity": "A zone, person, tracker or sensor that tells whether anyone is home.",
+          "viewer_entities": "Occupancy sensors covering every spot the light is visible from. Any activity here cuts the light immediately (night movement, morning routine).",
+          "refuge_entities": "Occupancy sensors for rooms the light is NOT visible from, e.g. a home office. Sustained presence there lets the light run while you are awake at home (working from home).",
+          "veto_entities": "Signals that force the light off regardless of occupancy, e.g. the TV in the same room.",
+          "trigger_entities": "Entities whose state CHANGES mean someone is moving near the sleep boundary, e.g. the bedroom door contact. Each change cuts the light and starts the quiet-time hold; the state itself is ignored, so a door left open never blocks the schedule."
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "This grow light is already conducted."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "menu_options": {
+          "signals": "Visibility signals",
+          "timing": "Timing"
+        }
+      },
+      "signals": {
+        "title": "Visibility signals",
+        "data": {
+          "sleep_entity": "Household asleep",
+          "home_entity": "Anyone home",
+          "viewer_entities": "Rooms with a view of the light",
+          "refuge_entities": "Out-of-sight rooms",
+          "veto_entities": "Hard vetoes",
+          "trigger_entities": "Movement triggers"
+        },
+        "data_description": {
+          "sleep_entity": "On while the household sleeps — the prime window for running the light.",
+          "home_entity": "A zone, person, tracker or sensor that tells whether anyone is home.",
+          "viewer_entities": "Occupancy sensors covering every spot the light is visible from.",
+          "refuge_entities": "Occupancy in rooms without sight of the light; sustained presence allows daytime runs.",
+          "veto_entities": "Signals that force the light off regardless of occupancy.",
+          "trigger_entities": "Entities whose state CHANGES mean someone is moving near the sleep boundary, e.g. the bedroom door contact. Each change cuts the light and starts the quiet-time hold; the state itself is ignored, so a door left open never blocks the schedule."
+        }
+      },
+      "timing": {
+        "title": "Timing",
+        "data": {
+          "anchor": "Plant-day start",
+          "clear_hold_seconds": "Quiet time before lighting",
+          "refuge_confirm_seconds": "Refuge confirmation time",
+          "min_block_seconds": "Minimum worthwhile block",
+          "refuge_hold_seconds": "Refuge hold",
+          "exposure_grace_seconds": "Exposure grace"
+        },
+        "data_description": {
+          "anchor": "When the daily light budget resets — ideally around your usual bedtime.",
+          "clear_hold_seconds": "How long the viewed rooms must stay quiet before the light may turn on.",
+          "refuge_confirm_seconds": "How long an out-of-sight room must be continuously occupied before it counts as refuge.",
+          "min_block_seconds": "Never start a light block shorter than this; avoids end-of-day dribble.",
+          "refuge_hold_seconds": "How long confirmed refuge survives gaps in the evidence — covers sensor decay while fetching coffee.",
+          "exposure_grace_seconds": "How long viewer activity is tolerated during refuge before the light cuts. Set to 0 for instant cuts even while working from home."
+        }
+      }
+    }
+  },
+  "entity": {
+    "switch": {
+      "enabled": {
+        "name": "Enabled"
+      }
+    },
+    "number": {
+      "target_hours": {
+        "name": "Target hours"
+      }
+    },
+    "sensor": {
+      "state": {
+        "name": "State",
+        "state": {
+          "lit": "Lit",
+          "observed": "Observed",
+          "cooldown": "Cooldown",
+          "sated": "Sated",
+          "standby": "Standby"
+        },
+        "state_attributes": {
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "asleep": "Household asleep",
+              "away": "Nobody home",
+              "refuge": "Occupants out of sight",
+              "veto": "Hard veto active",
+              "viewers": "Activity in view",
+              "awake_home": "Awake at home",
+              "target_reached": "Daily target reached",
+              "low_headroom": "Remaining budget too small"
+            }
+          }
+        }
+      },
+      "lit_today": {
+        "name": "Lit today"
+      }
+    }
+  }
+}
