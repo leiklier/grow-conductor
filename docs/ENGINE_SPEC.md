@@ -60,6 +60,8 @@ times — including while asleep or away — so every transition into
 UNOBSERVED implicitly waits out the hold. This single rule covers night
 movement (waking up to visit the bathroom), the morning routine (moving
 around before leaving), and "walked out the door but might step back in".
+Exception: while the household is in confirmed refuge, rule 1.3c
+applies instead.
 
 Rule 1.3b (trigger pulses). Any state transition of a trigger entity
 counts as **instantaneous** viewer activity: it stamps rule 1.3's
@@ -69,6 +71,18 @@ is never read: a door left open cannot block the schedule (contrast a
 viewer zone, whose sustained activity keeps the household OBSERVED).
 Transitions to or from unknown/unavailable are ignored, so a flapping
 sensor cannot suppress lighting either.
+
+Rule 1.3c (transient exposure during refuge). While the underlying
+verdict is REFUGE (1.7), viewer evidence is tolerated briefly: viewer
+activity flips the verdict to OBSERVED only once it has been
+**continuously** active for `exposure_grace` (default 300 s); shorter
+episodes — and trigger pulses (1.3b) — neither cut the light nor impose
+a hold afterwards. An episode that does reach `exposure_grace` cuts at
+that instant, and its falling edge imposes the normal `clear_hold`
+before the light may return. Rationale (owner decision, DECISION.md
+§9): a coffee run through a viewer room must not toggle a
+work-from-home block. Only the refuge context is softened — while
+asleep or away, every blip still cuts instantly per 1.3/1.3b.
 
 Rule 1.4 (asleep). Otherwise, if the household is asleep, the verdict is
 UNOBSERVED (reason `asleep`). This is the prime window.
@@ -82,13 +96,15 @@ rule 1.7 holds; in every other case it is OBSERVED. There is no
 weekend/weekday distinction and no "stay on after waking" latch: awake at
 home without proof of refuge always means OBSERVED (see DECISION.md).
 
-Rule 1.7 (refuge confirmation). The refuge condition holds when at least
-one refuge zone is active and has been **continuously** active for at
-least `refuge_confirm` (default 180 s). Any gap resets the confirmation
-clock. Refuge release is immediate — the moment no refuge zone is
-active, rule 1.6 falls back to OBSERVED. (Sensors with built-in decay,
-such as Presence Conductor room occupancy, make both directions smooth.)
-If no refuge zones are configured, the refuge condition never holds.
+Rule 1.7 (refuge confirmation and hold). The refuge condition engages
+when at least one refuge zone has been **continuously** active for
+`refuge_confirm` (default 180 s); while unconfirmed, any gap resets the
+confirmation clock. Once confirmed, refuge is **held** across gaps in
+the evidence: it persists until no refuge zone has been active for
+`refuge_hold` (default 600 s), so sensor decay during a coffee run does
+not release it. A gap longer than `refuge_hold` releases refuge and a
+later re-engagement must re-confirm from zero. If no refuge zones are
+configured, the refuge condition never holds.
 
 Rule 1.8 (fail-safe unknowns). Unknown inputs resolve toward OBSERVED:
 an unknown sleep signal counts as awake; an unknown home signal counts
@@ -184,6 +200,8 @@ and refuge confirmation starts from zero.
 | `anchor`         | 22:00   | local   | Plant-day boundary (1.x windows pivot)    |
 | `clear_hold`     | 600     | s       | Viewer quiet time before lighting (1.3)   |
 | `refuge_confirm` | 180     | s       | Continuous refuge before lighting (1.7)   |
+| `refuge_hold`    | 600     | s       | Confirmed refuge persists across gaps (1.7) |
+| `exposure_grace` | 300     | s       | Viewer activity tolerated in refuge (1.3c) |
 | `min_block`      | 900     | s       | Smallest headroom worth starting (2.5)    |
 
 `target_hours` is a live number entity (0–20 h, step 0.5); the rest are

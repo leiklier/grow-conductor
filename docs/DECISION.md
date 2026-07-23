@@ -84,7 +84,23 @@ reconciles on every external flip (rule 4.1). Manual experimentation is
 what the enabled switch is for — mixing two writers on one switch is how
 the old system got into silently-wrong states.
 
-## 8. Core purity and testing conventions
+## 8. Refuge continuity over absolute invisibility (2026-07-23)
+
+Owner decision: on a work-from-home day, a coffee run through the
+living room must not toggle the light — continuity of the block beats
+absolute invisibility. Under the original rules every kitchen trip cost
+~13 minutes of light (instant cut + `clear_hold` + refuge
+re-confirmation, with the office sensor's decay releasing refuge on
+top), several times a day: flicker for the human, starvation for the
+plants. During **confirmed refuge only**, the engine therefore
+tolerates transient viewer exposure (rule 1.3c, `exposure_grace`) and
+holds refuge evidence across short gaps (rule 1.7, `refuge_hold`);
+settling within sight of the light still cuts it once activity
+sustains. The trade is explicit and accepted: brief glimpses of the
+light while awake at home in refuge. Night movement, arrivals, and the
+away context are untouched — every blip there still cuts instantly.
+
+## 9. Core purity and testing conventions
 
 Inherited unchanged from sonos-conductor and presence-conductor: pure
 core (`core/` has zero `homeassistant` imports, enforced by ruff TID251
