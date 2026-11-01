@@ -223,8 +223,12 @@ def test_unconfirmed_refuge_dropout_resets_confirmation() -> None:
     assert d.next_review == at(6, 9, 5)  # confirmation restarted at 9:02
 
 
-def test_trigger_pulse_is_ignored_during_refuge() -> None:
-    """Rules 1.3b + 1.3c: pulses are transient by definition."""
+def test_trigger_pulse_cuts_during_refuge() -> None:
+    """Rule 1.3b: the bedroom door cuts even inside confirmed refuge.
+
+    Regression for the 2026-10-31 23:04 incident: the door opened while
+    the light burned for refuge (office occupied) and nothing happened.
+    """
     engine = Engine()
     refuge = snap(asleep=False, anyone_home=True, refuge_active=True)
     engine.handle_snapshot(refuge, at(6, 9, 0))
@@ -233,7 +237,13 @@ def test_trigger_pulse_is_ignored_during_refuge() -> None:
     assert d.want_on
 
     d = engine.activity_pulse(at(6, 11, 0))
-    assert d.want_on and d.state is LightState.LIT and d.reason is Reason.REFUGE
+    assert not d.want_on and d.state is LightState.COOLDOWN
+    assert d.next_review == at(6, 11, 10)
+    d = follow(engine, d, at(6, 11, 0))
+
+    # Refuge is still confirmed: the light returns after the clear_hold.
+    d = engine.tick(at(6, 11, 10))
+    assert d.want_on and d.reason is Reason.REFUGE
 
 
 def test_cap_is_exact_and_min_block_guards_restarts() -> None:
@@ -374,3 +384,232 @@ def test_trigger_pulse_while_observed_still_arms_the_hold() -> None:
     d = engine.handle_snapshot(snap(asleep=True, anyone_home=True), at(5, 22, 58))
     assert d.state is LightState.COOLDOWN
     assert d.next_review == at(5, 23, 5)
+
+
+# -- rule 4.4: manual override ------------------------------------------------
+
+
+def lit_asleep(engine: Engine, now: datetime) -> Decision:
+    d = engine.handle_snapshot(snap(asleep=True, anyone_home=True), now)
+    d = follow(engine, d, now)
+    assert d.want_on and d.reason is Reason.ASLEEP
+    return d
+
+
+def test_manual_off_sticks_until_the_household_wakes() -> None:
+    """The 2026-11-01 morning: someone is up while sleep mode is still on.
+
+    Under the strict single writer every HomeKit tap was reverted within
+    ~260 ms; now the tap holds through viewer blips and cooldowns, and
+    only waking (a context change) hands control back.
+    """
+    engine = Engine(target_hours=12.0)
+    lit_asleep(engine, at(5, 23))
+
+    d = engine.light_reported(False, at(6, 8, 18), manual=True)
+    assert not d.want_on and d.state is LightState.MANUAL and d.reason is Reason.MANUAL_OFF
+    assert engine.override is not None and engine.override.context is Reason.ASLEEP
+
+    # Sofa sighting, then quiet: without the override this relit at 08:31.
+    d = engine.handle_snapshot(
+        snap(asleep=True, anyone_home=True, viewer_active=True), at(6, 8, 19)
+    )
+    assert d.state is LightState.MANUAL
+    d = engine.handle_snapshot(snap(asleep=True, anyone_home=True), at(6, 8, 21))
+    d = engine.tick(at(6, 8, 31))
+    assert not d.want_on and d.state is LightState.MANUAL
+    d = engine.activity_pulse(at(6, 8, 32))
+    d = engine.tick(at(6, 9, 30))
+    assert not d.want_on and d.state is LightState.MANUAL
+
+    # Sleep mode turns off at 09:45: released; awake at home is OBSERVED anyway.
+    d = engine.handle_snapshot(snap(asleep=False, anyone_home=True), at(6, 9, 45))
+    assert engine.override is None
+    assert not d.want_on and d.state is LightState.OBSERVED and d.reason is Reason.AWAKE_HOME
+
+    # Leaving later: the conductor is fully back in charge.
+    d = engine.handle_snapshot(snap(asleep=False, anyone_home=False), at(6, 11, 0))
+    assert d.want_on and d.reason is Reason.AWAY
+
+
+def test_flipping_back_hands_control_back() -> None:
+    """A manual flip that agrees with the verdict releases the override."""
+    engine = Engine(target_hours=12.0)
+    lit_asleep(engine, at(5, 23))
+    engine.light_reported(False, at(6, 2, 0), manual=True)
+    assert engine.override is not None
+
+    d = engine.light_reported(True, at(6, 2, 5), manual=True)
+    assert engine.override is None
+    assert d.want_on and d.state is LightState.LIT and d.reason is Reason.ASLEEP
+
+
+def test_manual_on_while_observed_holds_until_context_changes() -> None:
+    """Manual control works both ways; budget still accrues (rule 2.2)."""
+    engine = Engine(target_hours=12.0)
+    d = engine.handle_snapshot(snap(asleep=False, anyone_home=True, veto_active=True), at(5, 20))
+    d = follow(engine, engine.light_reported(False, at(5, 20)), at(5, 20))
+    assert not d.want_on
+
+    d = engine.light_reported(True, at(5, 20, 0), manual=True)
+    assert d.want_on and d.state is LightState.MANUAL and d.reason is Reason.MANUAL_ON
+
+    # The veto clearing and returning is not a context change.
+    d = engine.handle_snapshot(snap(asleep=False, anyone_home=True), at(5, 20, 30))
+    d = engine.handle_snapshot(snap(asleep=False, anyone_home=True, veto_active=True), at(5, 21))
+    assert d.want_on and d.state is LightState.MANUAL
+    assert engine.spent_s(at(5, 21)) == 1 * H
+
+    # Bedtime: context asleep → released, and the engine wants it on anyway.
+    d = engine.handle_snapshot(snap(asleep=True, anyone_home=True), at(5, 21, 30))
+    assert engine.override is None
+    assert d.want_on and d.state is LightState.LIT
+
+
+def test_manual_flip_that_agrees_latches_nothing() -> None:
+    engine = Engine(target_hours=12.0)
+    d = engine.handle_snapshot(snap(asleep=False, anyone_home=True), at(5, 20))
+    engine.light_reported(True, at(5, 20), manual=False)  # some earlier state
+    d = engine.light_reported(False, at(5, 20, 1), manual=True)
+    assert engine.override is None
+    assert not d.want_on and d.state is LightState.OBSERVED
+
+
+def test_non_flips_never_latch() -> None:
+    """Only a known→known change can be manual (rule 4.5)."""
+    engine = Engine(target_hours=12.0)
+    lit_asleep(engine, at(5, 23))
+    engine.light_reported(True, at(5, 23, 1), manual=True)  # redundant report
+    assert engine.override is None
+    engine.light_reported(None, at(5, 23, 2), manual=True)  # unavailable
+    engine.light_reported(False, at(5, 23, 3), manual=True)  # recovery, not a flip
+    assert engine.override is None
+
+
+def test_enabled_switch_releases_and_standby_ignores_flips() -> None:
+    engine = Engine(target_hours=12.0)
+    lit_asleep(engine, at(5, 23))
+    engine.light_reported(False, at(6, 1, 0), manual=True)
+    assert engine.override is not None
+
+    d = engine.set_enabled(False, at(6, 1, 1))
+    assert engine.override is None and d.state is LightState.STANDBY
+    d = engine.light_reported(True, at(6, 1, 2), manual=True)
+    assert engine.override is None and d.state is LightState.STANDBY
+
+    # Re-enabled: plain engine control, no stale latch.
+    d = engine.set_enabled(True, at(6, 1, 3))
+    assert d.want_on and d.state is LightState.LIT
+
+
+def test_override_keeps_reviewing_context_changes() -> None:
+    """A refuge lapse is a timed context change; the override must see it."""
+    engine = Engine(target_hours=12.0)
+    refuge = snap(asleep=False, anyone_home=True, refuge_active=True)
+    engine.handle_snapshot(refuge, at(6, 9, 0))
+    d = follow(engine, engine.tick(at(6, 9, 3)), at(6, 9, 3))
+    assert d.want_on and d.reason is Reason.REFUGE
+
+    d = engine.light_reported(False, at(6, 10, 0), manual=True)
+    assert d.state is LightState.MANUAL
+    # Office empties at 10:30; refuge lapses at 10:40 (refuge_hold).
+    d = engine.handle_snapshot(snap(asleep=False, anyone_home=True), at(6, 10, 30))
+    assert d.state is LightState.MANUAL and d.next_review == at(6, 10, 40)
+    d = engine.tick(at(6, 10, 40))
+    assert engine.override is None and d.state is LightState.OBSERVED
+
+    # A fresh refuge later is a new occasion: it lights again.
+    engine.handle_snapshot(refuge, at(6, 13, 0))
+    d = engine.tick(at(6, 13, 3))
+    assert d.want_on and d.reason is Reason.REFUGE
+
+
+def test_trigger_pulse_cuts_during_a_tolerated_refuge_episode() -> None:
+    """Replay of 2026-10-31 23:03-23:09: someone walks through the living
+    room (short, tolerated episode) and opens the bedroom door mid-walk.
+    The door must cut at once, and the next short pass must not relight
+    the light while the door's hold runs."""
+    engine = Engine()
+    refuge = snap(asleep=False, anyone_home=True, refuge_active=True)
+    passing = snap(asleep=False, anyone_home=True, refuge_active=True, viewer_active=True)
+    engine.handle_snapshot(refuge, at(5, 22, 40))
+    d = follow(engine, engine.tick(at(5, 22, 43)), at(5, 22, 43))
+    assert d.want_on and d.reason is Reason.REFUGE
+
+    d = engine.handle_snapshot(passing, at(5, 23, 3, 27))
+    assert d.want_on  # short pass: tolerated (1.3c)
+    d = engine.activity_pulse(at(5, 23, 4, 4))
+    assert not d.want_on and d.state is LightState.COOLDOWN
+    # Earliest review: the walk-through maturing at exposure_grace (23:08:27),
+    # before the door's hold expires at 23:14:04.
+    assert d.next_review == at(5, 23, 8, 27)
+    d = follow(engine, d, at(5, 23, 4, 4))
+
+    d = engine.handle_snapshot(refuge, at(5, 23, 4, 32))
+    assert not d.want_on and d.state is LightState.COOLDOWN
+    d = engine.handle_snapshot(passing, at(5, 23, 8, 31))  # another short pass
+    assert not d.want_on, "a tolerated episode must not bypass a running hold"
+    d = engine.handle_snapshot(refuge, at(5, 23, 9, 3))
+    d = engine.tick(at(5, 23, 14, 4))
+    assert d.want_on and d.reason is Reason.REFUGE
+
+
+def test_short_episode_does_not_bypass_a_sustained_episodes_hold() -> None:
+    """Rule 1.3c: after a sustained cut, a quick return stays dark."""
+    engine = Engine()
+    refuge = snap(asleep=False, anyone_home=True, refuge_active=True)
+    both = snap(asleep=False, anyone_home=True, refuge_active=True, viewer_active=True)
+    engine.handle_snapshot(refuge, at(6, 9, 0))
+    follow(engine, engine.tick(at(6, 9, 3)), at(6, 9, 3))
+    engine.handle_snapshot(both, at(6, 12, 0))
+    d = follow(engine, engine.tick(at(6, 12, 5)), at(6, 12, 5))
+    assert not d.want_on
+    engine.handle_snapshot(refuge, at(6, 12, 20))  # hold until 12:30
+    d = engine.handle_snapshot(both, at(6, 12, 25))
+    assert not d.want_on and d.state is LightState.COOLDOWN
+    assert d.next_review == at(6, 12, 30)
+
+
+def test_refuge_never_starts_a_block_in_front_of_someone() -> None:
+    """Rule 3.1: 1.3c tolerance keeps a burning block, never lights one.
+
+    Replay of 2026-11-01 11:21: refuge confirmed while someone sat on the
+    sofa — v0.1.0 switched the light on in view, then cut it at the grace.
+    """
+    engine = Engine()
+    refuge = snap(asleep=False, anyone_home=True, refuge_active=True)
+    both = snap(asleep=False, anyone_home=True, refuge_active=True, viewer_active=True)
+    engine.handle_snapshot(both, at(6, 11, 0))
+    engine.light_reported(False, at(6, 11, 0))
+    d = engine.tick(at(6, 11, 3))  # refuge confirmed, viewer still active
+    assert not d.want_on and d.state is LightState.OBSERVED and d.reason is Reason.VIEWERS
+
+    # Sofa clears: no hold was imposed (the episode stayed short) → lights.
+    d = engine.handle_snapshot(refuge, at(6, 11, 4))
+    assert d.want_on and d.reason is Reason.REFUGE
+    d = follow(engine, d, at(6, 11, 4))
+
+    # Once burning, a short pass is tolerated as before (no toggle).
+    d = engine.handle_snapshot(both, at(6, 11, 30))
+    assert d.want_on and d.state is LightState.LIT
+
+
+def test_manual_off_during_tolerated_exposure_still_latches() -> None:
+    """Rule 4.4 judges the tap against the PRE-flip wish.
+
+    WFH block burning, partner on the sofa (short, tolerated): tapping it
+    off must latch. Judged after the flip, the never-start-in-view guard
+    (3.1) would read the tap as agreement and relight when the sofa clears.
+    """
+    engine = Engine()
+    refuge = snap(asleep=False, anyone_home=True, refuge_active=True)
+    both = snap(asleep=False, anyone_home=True, refuge_active=True, viewer_active=True)
+    engine.handle_snapshot(refuge, at(6, 9, 0))
+    follow(engine, engine.tick(at(6, 9, 3)), at(6, 9, 3))
+    d = engine.handle_snapshot(both, at(6, 11, 0))
+    assert d.want_on  # tolerated
+
+    d = engine.light_reported(False, at(6, 11, 1), manual=True)
+    assert d.state is LightState.MANUAL and engine.override is not None
+    d = engine.handle_snapshot(refuge, at(6, 11, 2))  # sofa clears
+    assert not d.want_on and d.state is LightState.MANUAL

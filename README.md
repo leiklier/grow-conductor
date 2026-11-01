@@ -31,6 +31,13 @@ design lives in [docs/DECISION.md](docs/DECISION.md). In short:
   A sensor outage starves the plants a little; it never shows the light.
 - **Truth-based accounting**: hours are counted from the physical switch
   state, so manual/HomeKit light counts toward the day's budget too.
+- **Manual control**: flip the light in Apple Home, the app, or on the
+  plug and the conductor keeps your choice (state `manual`). It takes
+  over again when the situation changes: someone wakes up or goes to
+  bed, the household leaves or comes home, or the office refuge starts
+  or ends. Flip it back yourself to hand control back at once. For
+  longer pauses (guests sleeping in view of the light), turn the
+  enabled switch off.
 
 ### Entities per grow light
 
@@ -38,7 +45,7 @@ design lives in [docs/DECISION.md](docs/DECISION.md). In short:
 | ---------------------- | ---------------------------------------------------------- |
 | `number.…_target_hours`| The knob: hours of light per plant day (0–20, step 0.5)    |
 | `switch.…_enabled`     | Off = standby: no commands, accounting continues            |
-| `sensor.…_state`       | `lit` / `observed` / `cooldown` / `sated` / `standby`, with a `reason` attribute |
+| `sensor.…_state`       | `lit` / `observed` / `cooldown` / `sated` / `manual` / `standby`, with a `reason` attribute |
 | `sensor.…_lit_today`   | Hours delivered this plant day (0.1 h resolution)           |
 
 ## Installation
@@ -67,12 +74,17 @@ The flow asks for the light switch and the visibility signals:
   dropouts don't release the block (refuge hold). Settling within sight
   of the light still cuts it.
 - **Hard vetoes** — signals that force the light off regardless, e.g.
-  the TV in the same room.
+  the TV in the same room. Media players count only while `playing`,
+  `buffering`, or plainly `on`. A streaming box that is `paused` or
+  `idle` does not count, because Apple TVs stay `paused` for hours after
+  the TV is switched off. List the TV itself to cover a paused show.
 - **Movement triggers** — entities whose state *changes* mean someone
-  is on the move near the sleep boundary, e.g. the bedroom door
-  contact: every change cuts the light instantly and starts the
-  quiet-time hold. Only transitions count — a door left open all day
-  never blocks the schedule.
+  is crossing the sleep boundary, e.g. the bedroom door contact. Every
+  change cuts the light at once and starts the quiet-time hold, in
+  every situation, working from home included. Only transitions count,
+  so a door left open all day never blocks the schedule. Battery
+  sensors fail silently: enable Zigbee2MQTT availability so a dead
+  contact shows `unavailable` instead of a stale "closed".
 
 All signals are optional, but with none configured the fail-safe keeps
 the light permanently off. Timing tunables (anchor, quiet-time hold,

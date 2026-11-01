@@ -162,3 +162,51 @@ def test_unknowns_fail_safe() -> None:
     verdict = assess(snap(anyone_home=False), NOW, QUIET, NO_REFUGE, TUNABLES)
     assert verdict.may_light
     assert verdict.reason is Reason.AWAY
+
+
+def test_context_is_independent_of_veto_viewers_and_holds() -> None:
+    """Rule 1.9: every verdict carries the underlying context."""
+    held = ViewerMemory(last_end=NOW - timedelta(seconds=60))
+    cases = [
+        (snap(asleep=True, veto_active=True), QUIET, NO_REFUGE, Reason.ASLEEP),
+        (
+            snap(asleep=True, viewer_active=True),
+            ViewerMemory(active_since=NOW),
+            NO_REFUGE,
+            Reason.ASLEEP,
+        ),
+        (snap(asleep=True), held, NO_REFUGE, Reason.ASLEEP),
+        (snap(asleep=False, anyone_home=False, veto_active=True), QUIET, NO_REFUGE, Reason.AWAY),
+        (snap(asleep=False, anyone_home=True, veto_active=True), QUIET, ENGAGED, Reason.REFUGE),
+        (
+            snap(asleep=False, anyone_home=True, viewer_active=True),
+            ViewerMemory(active_since=NOW),
+            NO_REFUGE,
+            Reason.AWAKE_HOME,
+        ),
+        (snap(), QUIET, NO_REFUGE, Reason.AWAKE_HOME),  # unknowns: awake at home (1.8)
+    ]
+    for snapshot, viewers, refuge, expected in cases:
+        assert assess(snapshot, NOW, viewers, refuge, TUNABLES).context is expected
+
+
+def test_veto_still_reviews_refuge_context_changes() -> None:
+    """A veto must not hide the refuge confirm/lapse instants (rule 4.4)."""
+    ready = NOW + timedelta(seconds=90)
+    verdict = assess(
+        snap(asleep=False, anyone_home=True, refuge_active=True, veto_active=True),
+        NOW,
+        QUIET,
+        RefugeView(ready_at=ready),
+        TUNABLES,
+    )
+    assert verdict.reason is Reason.VETO and verdict.review_at == ready
+    lapse = NOW + timedelta(seconds=300)
+    verdict = assess(
+        snap(asleep=False, anyone_home=True, veto_active=True),
+        NOW,
+        QUIET,
+        RefugeView(engaged=True, held_until=lapse),
+        TUNABLES,
+    )
+    assert verdict.reason is Reason.VETO and verdict.review_at == lapse

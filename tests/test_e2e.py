@@ -16,6 +16,7 @@ from homeassistant.setup import async_setup_component
 from pytest_homeassistant_custom_component.common import (
     MockConfigEntry,
     async_fire_time_changed,
+    async_mock_service,
 )
 
 from custom_components.grow_conductor.const import (
@@ -180,15 +181,130 @@ async def test_budget_cap_and_lit_today(hass: HomeAssistant, freezer) -> None:
     assert float(hass.states.get(lit_today).state) == 0.0
 
 
-async def test_manual_flip_is_reconciled(hass: HomeAssistant, freezer) -> None:
-    """Rule 4.1: while enabled, an external flip is corrected immediately."""
+async def homekit(hass: HomeAssistant, service: str) -> None:
+    """A foreign flip, the way HomeKit (or a wall button) delivers it."""
+    await hass.services.async_call("input_boolean", service, {"entity_id": LIGHT}, blocking=True)
+    await hass.async_block_till_done()
+
+
+async def test_homekit_off_sticks_until_the_household_wakes(hass: HomeAssistant, freezer) -> None:
+    """Rule 4.4: the 2026-11-01 morning, replayed end to end."""
     freezer.move_to(utc(22, 30))
-    await setup_conductor(hass)
+    entry = await setup_conductor(hass)
+    state_sensor = entity_id(hass, entry, "sensor", "state")
+    hass.states.async_set(SLEEP, "on")
+    await hass.async_block_till_done()
+    assert light_is_on(hass)
+
+    # Someone up while sleep mode is still on taps it off in Apple Home.
+    await homekit(hass, "turn_off")
+    assert not light_is_on(hass)  # NOT reverted any more
+    assert hass.states.get(state_sensor).state == "manual"
+    assert hass.states.get(state_sensor).attributes["reason"] == "manual_off"
+
+    # Sofa sighting + door, then a long quiet spell: stays off.
+    hass.states.async_set(VIEWER, "on")
+    await hass.async_block_till_done()
+    hass.states.async_set(VIEWER, "off")
+    hass.states.async_set(DOOR, "on")
+    await hass.async_block_till_done()
+    await advance(hass, freezer, 3600)
+    assert not light_is_on(hass)
+    assert hass.states.get(state_sensor).state == "manual"
+
+    # Waking releases the override; awake at home keeps it off anyway.
+    hass.states.async_set(SLEEP, "off")
+    await hass.async_block_till_done()
+    assert hass.states.get(state_sensor).state == "observed"
+
+    # Later the household leaves: the conductor is in charge again.
+    hass.states.async_set(HOME, "0")
+    await hass.async_block_till_done()
+    await advance(hass, freezer, 601)  # the door pulse's clear_hold
+    assert light_is_on(hass)
+    assert hass.states.get(state_sensor).attributes["reason"] == "away"
+
+
+async def test_flipping_back_hands_control_back(hass: HomeAssistant, freezer) -> None:
+    freezer.move_to(utc(22, 30))
+    entry = await setup_conductor(hass)
+    state_sensor = entity_id(hass, entry, "sensor", "state")
+    hass.states.async_set(SLEEP, "on")
+    await hass.async_block_till_done()
+
+    await homekit(hass, "turn_off")
+    assert hass.states.get(state_sensor).state == "manual"
+    await homekit(hass, "turn_on")
+    assert light_is_on(hass)
+    assert hass.states.get(state_sensor).state == "lit"
+
+    # Normal enforcement resumed: night movement cuts again.
+    hass.states.async_set(VIEWER, "on")
+    await hass.async_block_till_done()
+    assert not light_is_on(hass)
+    assert hass.states.get(state_sensor).state == "observed"
+
+
+async def test_manual_on_is_honored_while_observed(hass: HomeAssistant, freezer) -> None:
+    """Manual control works both ways (rule 4.4)."""
+    freezer.move_to(utc(22, 30))
+    entry = await setup_conductor(hass)
+    state_sensor = entity_id(hass, entry, "sensor", "state")
+    assert not light_is_on(hass)  # awake at home: observed
+
+    await homekit(hass, "turn_on")
+    assert light_is_on(hass)
+    assert hass.states.get(state_sensor).attributes["reason"] == "manual_on"
+    await advance(hass, freezer, 600)
+    assert light_is_on(hass)
+
+
+async def test_own_commands_never_latch_an_override(hass: HomeAssistant, freezer) -> None:
+    """Rule 4.5: echoes of the conductor's own commands are not manual."""
+    freezer.move_to(utc(22, 30))
+    entry = await setup_conductor(hass)
+    state_sensor = entity_id(hass, entry, "sensor", "state")
+    controller = hass.data[DOMAIN][entry.entry_id]
+    for _ in range(3):
+        hass.states.async_set(SLEEP, "on")
+        await hass.async_block_till_done()
+        assert light_is_on(hass)
+        hass.states.async_set(SLEEP, "off")
+        await hass.async_block_till_done()
+        assert not light_is_on(hass)
+    assert controller.engine.override is None
+    assert hass.states.get(state_sensor).state == "observed"
+
+
+async def test_unavailable_recovery_is_reconciled_not_honored(hass: HomeAssistant, freezer) -> None:
+    """A plug coming back from unavailable in the wrong state is corrected."""
+    freezer.move_to(utc(22, 30))
+    entry = await setup_conductor(hass)
+    state_sensor = entity_id(hass, entry, "sensor", "state")
     assert not light_is_on(hass)
 
-    await hass.services.async_call("input_boolean", "turn_on", {"entity_id": LIGHT}, blocking=True)
+    hass.states.async_set(LIGHT, "unavailable")
     await hass.async_block_till_done()
-    assert not light_is_on(hass)  # conductor turned it right back off
+    hass.states.async_set(LIGHT, "on")  # e.g. power-on behavior after an outage
+    await hass.async_block_till_done()
+    assert not light_is_on(hass)
+    assert hass.states.get(state_sensor).state == "observed"
+
+
+async def test_paused_media_player_does_not_veto(hass: HomeAssistant, freezer) -> None:
+    """Rule 1.2b: the Apple TV lingering in `paused` with the TV off."""
+    freezer.move_to(utc(22, 30))
+    entry = await setup_conductor(hass)
+    state_sensor = entity_id(hass, entry, "sensor", "state")
+    hass.states.async_set(VETO, "paused")
+    hass.states.async_set(SLEEP, "on")
+    await hass.async_block_till_done()
+    assert light_is_on(hass)
+
+    hass.states.async_set(VETO, "playing")
+    await hass.async_block_till_done()
+    assert not light_is_on(hass)
+    assert hass.states.get(state_sensor).attributes["reason"] == "veto"
 
 
 async def test_disabled_stops_commands_but_keeps_accounting(hass: HomeAssistant, freezer) -> None:
@@ -300,15 +416,77 @@ async def test_coffee_run_does_not_toggle_wfh_block(hass: HomeAssistant, freezer
     assert light_is_on(hass)
     assert hass.states.get(state_sensor).state == "lit"
 
-    # A door pulse during refuge is ignored too (rule 1.3b + 1.3c).
-    hass.states.async_set(DOOR, "on")
-    await hass.async_block_till_done()
-    assert light_is_on(hass)
-
-    # But someone SETTLING in the living room still cuts after the grace.
+    # Someone SETTLING in the living room still cuts after the grace.
     hass.states.async_set(VIEWER, "on")
     await hass.async_block_till_done()
     assert light_is_on(hass)
     await advance(hass, freezer, 301)
     assert not light_is_on(hass)
     assert hass.states.get(state_sensor).attributes["reason"] == "viewers"
+
+
+async def test_door_cuts_during_refuge(hass: HomeAssistant, freezer) -> None:
+    """Rule 1.3b end-to-end: the bedroom door cuts a WFH block too."""
+    freezer.move_to(utc(22, 30))
+    entry = await setup_conductor(hass)
+    state_sensor = entity_id(hass, entry, "sensor", "state")
+
+    hass.states.async_set(REFUGE, "on")
+    await hass.async_block_till_done()
+    await advance(hass, freezer, 181)
+    assert light_is_on(hass)
+
+    hass.states.async_set(DOOR, "on")
+    await hass.async_block_till_done()
+    assert not light_is_on(hass)
+    assert hass.states.get(state_sensor).state == "cooldown"
+
+    await advance(hass, freezer, 601)
+    assert light_is_on(hass)
+    assert hass.states.get(state_sensor).attributes["reason"] == "refuge"
+
+
+async def test_slow_device_echo_is_not_manual(hass: HomeAssistant, freezer) -> None:
+    """Rule 4.5 fallback: a report that arrives after HA forgot our context.
+
+    The switch service is mocked, so the plug "reports" later on its own
+    (fresh context). Within the echo window, in the commanded direction,
+    that is our echo; a contradicting flip afterwards is manual.
+    """
+    # A light-domain entity: the conductor's own switch platform loads the
+    # real `switch` component, which would replace a mocked switch service.
+    slow = "light.slow_plug"
+    calls = async_mock_service(hass, "light", "turn_on")
+    async_mock_service(hass, "light", "turn_off")
+    freezer.move_to(utc(22, 30))
+    assert await async_setup_component(hass, "homeassistant", {})
+    hass.states.async_set(slow, "off")
+    for entity, value in ((SLEEP, "off"), (HOME, "1"), (VIEWER, "off"), (REFUGE, "off")):
+        hass.states.async_set(entity, value)
+    await hass.async_block_till_done()
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Slow plantelys",
+        data={},
+        options={**OPTIONS, CONF_LIGHT: slow, CONF_VETOES: [], CONF_TRIGGERS: []},
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    controller = hass.data[DOMAIN][entry.entry_id]
+
+    hass.states.async_set(SLEEP, "on")
+    await hass.async_block_till_done()
+    assert len(calls) == 1
+
+    await advance(hass, freezer, 8)  # longer than HA's 5 s context memory
+    hass.states.async_set(slow, "on")
+    await hass.async_block_till_done()
+    assert controller.engine.override is None
+    assert controller.engine.decision.state.value == "lit"
+
+    await advance(hass, freezer, 5)
+    hass.states.async_set(slow, "off")  # a real foreign flip
+    await hass.async_block_till_done()
+    assert controller.engine.override is not None
+    assert controller.engine.decision.state.value == "manual"

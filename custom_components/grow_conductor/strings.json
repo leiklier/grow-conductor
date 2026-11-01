@@ -29,8 +29,8 @@
           "home_entity": "A zone, person, tracker or sensor that tells whether anyone is home.",
           "viewer_entities": "Occupancy sensors covering every spot the light is visible from. Any activity here cuts the light immediately (night movement, morning routine).",
           "refuge_entities": "Occupancy sensors for rooms the light is NOT visible from, e.g. a home office. Sustained presence there lets the light run while you are awake at home (working from home).",
-          "veto_entities": "Signals that force the light off regardless of occupancy, e.g. the TV in the same room.",
-          "trigger_entities": "Entities whose state CHANGES mean someone is moving near the sleep boundary, e.g. the bedroom door contact. Each change cuts the light and starts the quiet-time hold; the state itself is ignored, so a door left open never blocks the schedule."
+          "veto_entities": "Signals that force the light off regardless of occupancy, e.g. the TV in the same room. Media players count only while playing (or plainly on) — a paused or idle streaming box does not.",
+          "trigger_entities": "Entities whose state CHANGES mean someone is crossing the sleep boundary, e.g. the bedroom door contact. Each change cuts the light and starts the quiet-time hold — also while working from home; the state itself is ignored, so a door left open never blocks the schedule."
         }
       }
     },
@@ -61,8 +61,8 @@
           "home_entity": "A zone, person, tracker or sensor that tells whether anyone is home.",
           "viewer_entities": "Occupancy sensors covering every spot the light is visible from.",
           "refuge_entities": "Occupancy in rooms without sight of the light; sustained presence allows daytime runs.",
-          "veto_entities": "Signals that force the light off regardless of occupancy.",
-          "trigger_entities": "Entities whose state CHANGES mean someone is moving near the sleep boundary, e.g. the bedroom door contact. Each change cuts the light and starts the quiet-time hold; the state itself is ignored, so a door left open never blocks the schedule."
+          "veto_entities": "Signals that force the light off regardless of occupancy. Media players count only while playing (or plainly on).",
+          "trigger_entities": "Entities whose state CHANGES mean someone is crossing the sleep boundary, e.g. the bedroom door contact. Each change cuts the light and starts the quiet-time hold — also while working from home; the state itself is ignored, so a door left open never blocks the schedule."
         }
       },
       "timing": {
@@ -105,6 +105,7 @@
           "observed": "Observed",
           "cooldown": "Cooldown",
           "sated": "Sated",
+          "manual": "Manual",
           "standby": "Standby"
         },
         "state_attributes": {
@@ -118,7 +119,9 @@
               "viewers": "Activity in view",
               "awake_home": "Awake at home",
               "target_reached": "Daily target reached",
-              "low_headroom": "Remaining budget too small"
+              "low_headroom": "Remaining budget too small",
+              "manual_off": "Turned off manually",
+              "manual_on": "Turned on manually"
             }
           }
         }

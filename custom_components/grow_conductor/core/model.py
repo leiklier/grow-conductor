@@ -14,6 +14,7 @@ class LightState(StrEnum):
     OBSERVED = "observed"
     COOLDOWN = "cooldown"
     SATED = "sated"
+    MANUAL = "manual"
     STANDBY = "standby"
 
 
@@ -31,6 +32,14 @@ class Reason(StrEnum):
     # SATED
     TARGET_REACHED = "target_reached"
     LOW_HEADROOM = "low_headroom"
+    # MANUAL (rule 4.4)
+    MANUAL_OFF = "manual_off"
+    MANUAL_ON = "manual_on"
+
+
+# The rule-1.9 contexts are a subset of Reason: ASLEEP, AWAY, REFUGE, and
+# AWAKE_HOME (everything else). Overrides are keyed to them (rule 4.4).
+CONTEXTS = frozenset({Reason.ASLEEP, Reason.AWAY, Reason.REFUGE, Reason.AWAKE_HOME})
 
 
 @dataclass(frozen=True)
@@ -47,6 +56,21 @@ class InputSnapshot:
     viewer_active: bool = False
     refuge_active: bool = False
     veto_active: bool = False
+
+
+@dataclass(frozen=True)
+class Override:
+    """A latched manual override (rule 4.4).
+
+    ``on`` — the state the user flipped the light to.
+    ``context`` — the rule-1.9 context it was latched in; a change
+    releases the override.
+    ``since`` — when it was latched (diagnostics only).
+    """
+
+    on: bool
+    context: Reason
+    since: datetime
 
 
 @dataclass(frozen=True)
