@@ -34,10 +34,14 @@ def test_person_and_tracker_are_home_truthy() -> None:
 
 
 def test_media_player_active_states() -> None:
-    """A playing/paused TV is a watcher; off/standby/idle is not."""
-    for active in ("playing", "paused", "buffering", "on"):
+    """Rule 1.2b: playing/buffering/on is a watcher; paused/idle is not.
+
+    A streaming box sits in ``paused`` for hours after the TV goes dark
+    (DECISION.md §11), so ``paused`` must never veto on its own.
+    """
+    for active in ("playing", "buffering", "on"):
         assert normalize_signal(State("media_player.tv", active)) is True
-    for inactive in ("off", "standby", "idle"):
+    for inactive in ("off", "standby", "idle", "paused"):
         assert normalize_signal(State("media_player.tv", inactive)) is False
 
 

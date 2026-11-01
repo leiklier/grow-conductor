@@ -50,4 +50,8 @@ DEFAULT_ANCHOR = "22:00:00"
 # sensor on this cadence (quantization keeps the recorder quiet).
 PUBLISH_INTERVAL_S = 360.0
 
+# Rule 4.5: a light report matching our last command's direction within
+# this window is our own (late) echo, even without our HA context.
+ECHO_WINDOW_S = 30.0
+
 PLATFORMS = ["number", "sensor", "switch"]

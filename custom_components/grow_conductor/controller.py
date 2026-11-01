@@ -7,6 +7,9 @@ Responsibilities (ENGINE_SPEC §1 normalization, §4 enforcement):
 - Feed physical light-state reports into the budget ledger (rule 2.2).
 - Reconcile the physical switch to the engine's ``want_on`` (rule 4.1),
   as a single writer, idempotently (rule 4.2).
+- Tell the controller's own command echoes apart from manual flips
+  (HomeKit, wall button, app) so the engine can honor them as
+  overrides (rules 4.4, 4.5).
 - Keep exactly one timer armed for the decision's ``next_review``
   (rule 3.2), tightened to a publish cadence while the light burns so
   the lit-hours sensor keeps moving between events.
@@ -19,10 +22,11 @@ the engine's monotonic-time requirement satisfied.
 
 from __future__ import annotations
 
+from collections import deque
 from datetime import datetime, timedelta
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import Event, HomeAssistant, State, callback
+from homeassistant.core import Context, Event, HomeAssistant, State, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import (
     EventStateChangedData,
@@ -32,12 +36,14 @@ from homeassistant.helpers.event import (
 from homeassistant.util import dt as dt_util
 
 from .config import Config
-from .const import DOMAIN, PUBLISH_INTERVAL_S
+from .const import DOMAIN, ECHO_WINDOW_S, PUBLISH_INTERVAL_S
 from .core.engine import Engine
 from .core.model import Decision, InputSnapshot
 
-# media_player states that mean "someone is actively watching/listening".
-_ACTIVE_MEDIA_STATES = {"playing", "paused", "buffering", "on"}
+# media_player states that mean "someone is actively watching" (rule 1.2b).
+# ``paused``/``idle`` are deliberately absent: streaming boxes linger in
+# them for hours after the screen goes dark (DECISION.md §11).
+_ACTIVE_MEDIA_STATES = {"playing", "buffering", "on"}
 _UNKNOWN_STATES = {"unknown", "unavailable"}
 
 
@@ -47,7 +53,8 @@ def normalize_signal(state: State | None) -> bool | None:
 
     Domain-aware: zones and numeric sensors count occupants, person and
     device_tracker entities are truthy at home, media players are truthy
-    while actively playing, everything else follows on/off.
+    while playing/buffering or plainly ``on`` (rule 1.2b), everything
+    else follows on/off.
     """
     if state is None or state.state in _UNKNOWN_STATES:
         return None
@@ -85,6 +92,11 @@ class GrowConductorController:
         self._unsubs: list[callback] = []
         self._timer_unsub: callback | None = None
         self._timer_at: datetime | None = None
+        # Rule 4.5 echo bookkeeping: contexts of our recent commands, and
+        # the last commanded state for devices that report too late to
+        # inherit the command's context.
+        self._own_contexts: deque[str] = deque(maxlen=8)
+        self._last_command: tuple[bool, datetime] | None = None
 
     # -- lifecycle ------------------------------------------------------------
 
@@ -202,7 +214,33 @@ class GrowConductorController:
     @callback
     def _on_light_event(self, event: Event[EventStateChangedData]) -> None:
         now = dt_util.now()
-        self._after_decision(self.engine.light_reported(self._read_light(), now), now)
+        new = event.data.get("new_state")
+        manual = self._is_manual_flip(event.data.get("old_state"), new, now)
+        self._after_decision(
+            self.engine.light_reported(normalize_light(new), now, manual=manual), now
+        )
+
+    def _is_manual_flip(self, old: State | None, new: State | None, now: datetime) -> bool:
+        """Rule 4.5: a known→known change that is not our own echo.
+
+        Echo evidence: HA attributes the report to one of our command
+        contexts, or it matches our last command's direction inside the
+        echo window. A report in the last command's direction consumes
+        that fallback either way, so a later flip back by the user is
+        never mistaken for a stale echo.
+        """
+        before, after = normalize_light(old), normalize_light(new)
+        late_echo = False
+        if after is not None and self._last_command is not None:
+            commanded, at = self._last_command
+            if commanded == after:
+                late_echo = (now - at).total_seconds() < ECHO_WINDOW_S
+                self._last_command = None
+        if not self._armed or new is None or before is None or after is None or before == after:
+            return False
+        if new.context.id in self._own_contexts or new.context.parent_id in self._own_contexts:
+            return False
+        return not late_echo
 
     # -- decisions out ----------------------------------------------------------------
 
@@ -215,23 +253,27 @@ class GrowConductorController:
 
     @callback
     def _after_decision(self, decision: Decision, now: datetime) -> None:
-        self._enforce(decision)
+        self._enforce(decision, now)
         self._schedule_review(decision, now)
         async_dispatcher_send(self.hass, self.signal)
 
     @callback
-    def _enforce(self, decision: Decision) -> None:
+    def _enforce(self, decision: Decision, now: datetime) -> None:
         """Rule 4.1/4.2: command only while armed+enabled, only on a real delta."""
         if not self._armed or not self.engine.enabled:
             return
         actual = self.engine.light_on
         if actual is None or actual == decision.want_on:
             return
+        context = Context()
+        self._own_contexts.append(context.id)
+        self._last_command = (decision.want_on, now)
         self.hass.async_create_task(
             self.hass.services.async_call(
                 "homeassistant",
                 "turn_on" if decision.want_on else "turn_off",
                 {"entity_id": self.config.light_entity},
+                context=context,
             )
         )
 
