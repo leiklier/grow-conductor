@@ -53,6 +53,16 @@ Rule 1.2 (veto). If any veto entity is active, the verdict is OBSERVED.
 Veto release has no extra hold: if a veto clears and no other rule makes
 the household OBSERVED, the light may return immediately.
 
+Rule 1.2b (media players). A media-player veto is active only while it
+is `playing`, `buffering`, or `on` (a TV that reports no playback state).
+`paused` and `idle` are **not** evidence of a watcher: streaming boxes
+linger in them for hours after the screen goes dark. Measured on the
+live instance over 2026-10-22..11-01: the Apple TV sat in `paused` for
+4 days 1 h in total while its TV was off, against 1.4 h while the TV was
+on, and that stale `paused` vetoed two whole sleep windows. `playing`
+with the TV off totalled 5 seconds. Configure the TV itself as a veto
+to cover a paused show; the screen being on is the real signal.
+
 Rule 1.3 (viewer activity). If any viewer zone is active, or was last
 active less than `clear_hold` ago (default 600 s), the verdict is
 OBSERVED. The engine tracks the most recent viewer activity at all
@@ -61,12 +71,16 @@ UNOBSERVED implicitly waits out the hold. This single rule covers night
 movement (waking up to visit the bathroom), the morning routine (moving
 around before leaving), and "walked out the door but might step back in".
 Exception: while the household is in confirmed refuge, rule 1.3c
-applies instead.
+applies to viewer zones instead.
 
 Rule 1.3b (trigger pulses). Any state transition of a trigger entity
 counts as **instantaneous** viewer activity: it stamps rule 1.3's
 activity clock — cutting the light at once and starting the
-`clear_hold` — but never sustains it. The *level* of a trigger entity
+`clear_hold` — but never sustains it. This holds in **every** context,
+confirmed refuge included: a trigger marks someone crossing the sleep
+boundary, which is never the refuge occupant's coffee run (1.3c), so
+the owner's rule "opening the bedroom door turns it off" has no
+exception (DECISION.md §10). The *level* of a trigger entity
 is never read: a door left open cannot block the schedule (contrast a
 viewer zone, whose sustained activity keeps the household OBSERVED).
 Transitions to or from unknown/unavailable are ignored, so a flapping
@@ -76,11 +90,14 @@ Rule 1.3c (transient exposure during refuge). While the underlying
 verdict is REFUGE (1.7), viewer evidence is tolerated briefly: viewer
 activity flips the verdict to OBSERVED only once it has been
 **continuously** active for `exposure_grace` (default 300 s); shorter
-episodes — and trigger pulses (1.3b) — neither cut the light nor impose
-a hold afterwards. An episode that does reach `exposure_grace` cuts at
+episodes neither cut the light nor impose a hold afterwards. Trigger
+pulses are not softened (1.3b). Tolerance only protects a block that is
+already burning: it never *starts* one while a viewer zone is active
+(rule 3.1), and a short episode never bypasses a hold that is already
+running from a pulse or a sustained episode. An episode that does reach `exposure_grace` cuts at
 that instant, and its falling edge imposes the normal `clear_hold`
 before the light may return. Rationale (owner decision, DECISION.md
-§9): a coffee run through a viewer room must not toggle a
+§8): a coffee run through a viewer room must not toggle a
 work-from-home block. Only the refuge context is softened — while
 asleep or away, every blip still cuts instantly per 1.3/1.3b.
 
@@ -114,6 +131,11 @@ the schedule; the sleep/home gates above still protect the household —
 this matches the legacy template behavior). The consequence is that a
 total sensor outage starves the plants rather than exposing the light.
 
+Rule 1.9 (context). The **context** is the underlying situation of rules
+1.4–1.7, independent of vetoes, viewer activity, and holds: `asleep`,
+`away`, `refuge` (confirmed), or `awake_home` (everything else). Every
+verdict carries it; rule 4.4 keys manual overrides to it.
+
 ## 2. Photoperiod budget
 
 Rule 2.1 (plant day). Delivered light is accounted per plant day. At
@@ -145,7 +167,10 @@ dribble without ever cutting a healthy block short.
 
 Rule 3.1 (decision). `want_on` is true iff: enabled (§4.3), UNOBSERVED
 (§1), spent < target (2.3), and — when the light is currently off — the
-minimum-block guard (2.5) passes.
+minimum-block guard (2.5) passes and no viewer zone is active (a
+1.3c-tolerated episode keeps a block burning but never lights one in
+front of someone; the decision then reads `observed`/`viewers`). A
+manual override (4.4) replaces `want_on`.
 
 Rule 3.2 (next review). Every decision carries `next_review`, the
 earliest future instant at which the verdict could change with no input
@@ -159,14 +184,15 @@ Rule 3.3 (display state). The engine publishes exactly one of:
 `veto`/`viewers`/`awake_home`), `cooldown` (UNOBSERVED but waiting out
 rule 1.3's hold — split from `observed` so the user can see the
 countdown is working), `sated` (2.3 or 2.5, with reason
-`target_reached`/`low_headroom`), or `standby` (disabled, §4.3).
+`target_reached`/`low_headroom`), `manual` (a rule 4.4 override, with
+reason `manual_off`/`manual_on`), or `standby` (disabled, §4.3).
 
 ## 4. Enforcement and manual control
 
 Rule 4.1 (single writer). While enabled, the adapter reconciles the
 physical switch to `want_on` — immediately on every decision change
-**and** on every external flip of the switch. There is no manual
-override while enabled; the escape hatch is rule 4.3.
+and on every light report that is not a manual flip (4.5). A manual
+flip is honored instead (4.4).
 
 Rule 4.2 (idempotence). The adapter only issues a command when the
 reported state differs from `want_on`; the engine's decisions must be
@@ -177,6 +203,36 @@ Rule 4.3 (enabled switch). Each device has a restorable enabled switch.
 While off: the engine issues no commands and reports state `standby`,
 but keeps tracking visibility and accruing budget from reports (2.2), so
 re-enabling is warm and manual light time is not double-delivered.
+
+Rule 4.4 (manual override). While enabled, a manual flip (4.5) of the
+light *against* the engine's own wish latches an override: the engine
+adopts the flipped state as `want_on` (state `manual`) and stops
+reconciling toward its own verdict. A manual flip that *agrees* with the
+engine's wish releases any override instead — flipping it back hands
+control back. The wish is the engine's own decision (ignoring any
+override) for the light state *before* the flip; judged afterwards,
+light-state-dependent guards (2.5, 3.1) could make a contradicting tap
+look like agreement. The override also releases when
+- the context (1.9) changes from the one it was latched in — waking
+  up, going to sleep, leaving, arriving, settling into or leaving a
+  refuge: the situation the user reacted to is over;
+- the enabled switch changes (either direction);
+- the adapter restarts (overrides are not persisted, 5.2).
+Viewer activity, vetoes, holds, the budget cap, and anchor crossings do
+**not** release it: a household that turned the light off at 08:00
+because someone is up while sleep mode is still on must not see it
+return after the next `clear_hold` (the 2026-11-01 morning, DECISION.md
+§12). Budget accrual is unaffected (2.2).
+
+Rule 4.5 (manual-flip classification, adapter). A light report is a
+manual flip only if it changes the state between two known values (a
+recovery from unknown/unavailable never is) **and** it is not an echo of
+the adapter's own command. A report is an echo when Home Assistant
+attributes it to the context of one of the adapter's recent commands,
+or — for devices that report too late to inherit the context — when it
+matches the direction of the adapter's last command issued less than
+`echo_window` (30 s) ago. Everything else (HomeKit, a wall button,
+the app, another automation) is manual.
 
 ## 5. Persistence
 
@@ -190,7 +246,8 @@ block, which fail-safes toward less light, never toward visible light).
 Rule 5.2 (seeding inputs). On startup the engine treats input history as
 empty: no viewer activity is remembered (a restart during sleep lights
 up without waiting `clear_hold` — acceptable, the household is asleep),
-and refuge confirmation starts from zero.
+refuge confirmation starts from zero, and no manual override (4.4) is
+latched.
 
 ## 6. Tunables
 
@@ -203,7 +260,8 @@ and refuge confirmation starts from zero.
 | `refuge_hold`    | 600     | s       | Confirmed refuge persists across gaps (1.7) |
 | `exposure_grace` | 300     | s       | Viewer activity tolerated in refuge (1.3c) |
 | `min_block`      | 900     | s       | Smallest headroom worth starting (2.5)    |
+| `echo_window`    | 30      | s       | Late own-command echoes (4.5, adapter)    |
 
-`target_hours` is a live number entity (0–20 h, step 0.5); the rest are
-options-flow settings. `target_hours` is clamped to 20 so every plant
+`target_hours` is a live number entity (0–20 h, step 0.5); `echo_window`
+is an adapter constant; the rest are options-flow settings. `target_hours` is clamped to 20 so every plant
 day keeps at least a 4-hour dark period (photoperiod hygiene).

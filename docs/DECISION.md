@@ -84,6 +84,10 @@ reconciles on every external flip (rule 4.1). Manual experimentation is
 what the enabled switch is for — mixing two writers on one switch is how
 the old system got into silently-wrong states.
 
+*Amended by §12:* manual flips are now honored as a context-scoped
+override; the conductor still reverts its own stale echoes and never
+fights itself.
+
 ## 8. Refuge continuity over absolute invisibility (2026-07-23)
 
 Owner decision: on a work-from-home day, a coffee run through the
@@ -109,3 +113,79 @@ adapter as a thin normalization + enforcement layer, uv tooling,
 pytest-homeassistant-custom-component pinned to the production HA
 version, and recorder discipline (no per-second entity churn; the
 lit-hours sensor quantizes and rate-limits its publishes).
+
+## 10. The bedroom door always cuts (2026-11-01)
+
+Owner report: "it doesn't turn off when I open the door to soverom."
+The live history showed two causes. The larger one was outside the
+engine: the Zigbee coordinator stopped delivering messages from
+2026-10-21 22:02 until Zigbee2MQTT restarted on 10-31 22:43. With Z2M
+availability tracking disabled, the dead door contact kept showing a
+plausible `off`, so no pulse ever arrived. The engine cause was rule
+1.3c as first written. It ignored trigger pulses during confirmed
+refuge, so on 10-31 at 23:04 the door opened while the light burned
+for refuge and nothing happened. That exemption came from the
+coffee-run argument (§8), but it does not fit triggers. The refuge
+occupant's coffee run goes through viewer rooms. A bedroom-door
+transition is someone crossing the sleep boundary. Rule 1.3b now cuts
+in every context. §8's tolerance of short *viewer* episodes in refuge
+is unchanged, with two tightenings found while replaying the live
+history through the engine:
+
+- A new short episode no longer bypasses a running hold. The old code
+  checked "viewer active, still within grace" before the hold, so a
+  second pass relit the light during the door's or a sustained
+  episode's `clear_hold`.
+- A tolerated episode keeps a burning block alive but never starts
+  one. Light switching on in front of someone is the most visible
+  thing the conductor can do.
+
+In the 10-25..11-01 replay with the conductor left enabled throughout,
+switch-ons fell from 48 to 32. Switch-ons while a viewer zone was
+active fell from 13 to 0 (all 13 were refuge blocks on 11-01).
+
+## 11. A paused media player is not a watcher (2026-11-01)
+
+The original adapter counted `paused` and `idle` media players as
+active vetoes. The live Apple TV reports `paused` for hours, sometimes
+days, after the TV is switched off. Over ten days that added up to
+4 days 1 h of `paused` with the screen dark, against 1.4 h with the
+screen on. The stale veto blocked the whole 10-27→28 sleep window and
+most of 10-28→29. `playing` is trustworthy: `playing` with the TV off
+totalled 5 seconds. Rule 1.2b therefore keeps only `playing`,
+`buffering`, and `on`. A household that pauses a show and wants that
+covered should list the TV itself. A webOS/Android/Samsung TV reports
+`on` while the screen is on, which is the signal that actually matters.
+
+## 12. Manual override instead of strict single writer (2026-11-01)
+
+§7 made the conductor revert every external flip, with the enabled
+switch as the only escape hatch. In practice this was hostile. Between
+10-25 and 11-01 the owner tapped the light off in Apple Home six times,
+and each tap was reverted within about 260 ms. Every time, the owner
+then switched the whole conductor off and lost the rest of the day's
+schedule. The typical trigger was a morning when someone was up while
+household sleep mode was still on. Each door or viewer cut lasted one
+`clear_hold`, and then the light came back.
+
+Rule 4.4 now honors a manual flip as an override that holds until the
+*situation* changes (rule 1.9 context: wake, sleep, leave, arrive,
+refuge on/off), until the user flips it back, or until the enabled
+switch changes. This follows Light Conductor's override latch, which
+the owner already lives with. There are two deliberate differences:
+
+- **No timeout.** Context changes come several times a day. A timeout
+  would only ever fire inside a context that keeps standing, and that
+  is exactly when the user's choice should keep standing too.
+- **Viewer and veto edges do not release.** In the morning case the
+  next sofa sighting would otherwise release the latch, and the light
+  would return `clear_hold` later, which is the bug itself.
+
+Manual on gets the same treatment as manual off, so the switch obeys
+Apple Home in both directions. Light delivered manually still counts
+toward the day (§6). The adapter tells its own commands apart from
+foreign flips using Home Assistant's context attribution, with a
+direction-and-time fallback for late reports (rule 4.5). That is the
+same distinction the logbook draws between "call_service" and
+"HomeKit send command". For a long pause (guests sleeping on the
+sofa), the enabled switch is still the right tool.
