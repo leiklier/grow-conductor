@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 from .budget import PlantDayLedger
-from .model import Decision, InputSnapshot, LightState, Reason
+from .model import Decision, InputSnapshot, LightState, Override, Reason
 from .tunables import DEFAULT_TARGET_HOURS, Tunables, clamp_target_hours
 from .visibility import RefugeView, Verdict, ViewerMemory, assess
 
@@ -36,6 +36,7 @@ class Engine:
         self._refuge_confirmed = False
         self._enabled = True
         self._light_on: bool | None = None
+        self._override: Override | None = None  # rule 4.4
         self._decision: Decision | None = None
 
     # -- read surface ---------------------------------------------------------
@@ -59,6 +60,11 @@ class Engine:
     @property
     def light_on(self) -> bool | None:
         return self._light_on
+
+    @property
+    def override(self) -> Override | None:
+        """The latched manual override (rule 4.4), if any."""
+        return self._override
 
     @property
     def decision(self) -> Decision | None:
@@ -114,23 +120,39 @@ class Engine:
 
         Stamps rule 1.3's activity clock — cutting the light and starting
         the clear-hold — without sustaining activity; the trigger's level
-        is never part of the snapshot. During confirmed refuge, rule 1.3c
-        ignores pulses entirely (they are by definition transient).
+        is never part of the snapshot. Pulses cut in every context: inside
+        confirmed refuge they stamp the 1.3c hold reference too, because a
+        sleep-boundary crossing is never the refuge occupant's coffee run.
         """
         self._viewer_last_end = now
+        self._viewer_sustained_end = now
         return self._decide(now)
 
-    def light_reported(self, on: bool | None, now: datetime) -> Decision:
-        """Fold the physical light state into the ledger (rule 2.2)."""
+    def light_reported(self, on: bool | None, now: datetime, *, manual: bool = False) -> Decision:
+        """Fold the physical light state into the ledger (rule 2.2).
+
+        ``manual`` marks a flip the adapter classified as foreign (rule
+        4.5); it latches or releases an override (rule 4.4). It is ignored
+        unless the report actually changes between two known states.
+        """
+        previous = self._light_on
+        wish: bool | None = None
+        if manual and on is not None and previous is not None and on != previous:
+            # Judge the flip against what the engine wanted BEFORE the user
+            # touched the light (rule 4.4) — afterwards, light-state-dependent
+            # guards (2.5, 3.1) could make a contradicting tap look agreeing.
+            wish = self._base_decision(now)[1].want_on
         self._light_on = on
         self._ledger.light_reported(on, now)
-        return self._decide(now)
+        return self._decide(now, manual_flip=None if wish is None else (on, wish))
 
     def set_target(self, hours: float, now: datetime) -> Decision:
         self._target_s = clamp_target_hours(hours) * 3600.0
         return self._decide(now)
 
     def set_enabled(self, enabled: bool, now: datetime) -> Decision:
+        if enabled != self._enabled:
+            self._override = None  # rule 4.4: the enabled switch releases
         self._enabled = enabled
         return self._decide(now)
 
@@ -170,7 +192,15 @@ class Engine:
             held_until = self._refuge_last_active + timedelta(seconds=self._tunables.refuge_hold_s)
         return RefugeView(engaged=self._refuge_confirmed, ready_at=ready_at, held_until=held_until)
 
-    def _decide(self, now: datetime) -> Decision:
+    def _decide(self, now: datetime, manual_flip: tuple[bool, bool] | None = None) -> Decision:
+        verdict, decision = self._base_decision(now)
+        if self._enabled:
+            decision = self._apply_override(decision, verdict.context, manual_flip, now)
+        self._decision = decision
+        return decision
+
+    def _base_decision(self, now: datetime) -> tuple[Verdict, Decision]:
+        """The engine's own verdict and decision (rules 1-3), no override."""
         self._ledger.roll(now)
         verdict = assess(
             self._snapshot,
@@ -191,9 +221,31 @@ class Engine:
             decision = self._decide_dark(verdict, reviews)
         else:
             decision = self._decide_light(verdict, now, reviews)
+        return verdict, decision
 
-        self._decision = decision
-        return decision
+    def _apply_override(
+        self,
+        decision: Decision,
+        context: Reason,
+        manual_flip: tuple[bool, bool] | None,
+        now: datetime,
+    ) -> Decision:
+        """Rule 4.4: latch, release, or honor a manual override.
+
+        ``manual_flip`` is (flipped-to state, the engine's pre-flip wish).
+        """
+        if self._override is not None and self._override.context is not context:
+            self._override = None  # the situation the user reacted to is over
+        if manual_flip is not None:
+            flipped_to, wish = manual_flip
+            if flipped_to == wish:
+                self._override = None  # flipped back into agreement: hand over
+            else:
+                self._override = Override(on=flipped_to, context=context, since=now)
+        if self._override is None:
+            return decision
+        reason = Reason.MANUAL_ON if self._override.on else Reason.MANUAL_OFF
+        return Decision(self._override.on, LightState.MANUAL, reason, decision.next_review)
 
     def _decide_dark(self, verdict: Verdict, reviews: list[datetime]) -> Decision:
         if verdict.review_at is not None:
@@ -212,5 +264,9 @@ class Engine:
             return Decision(False, LightState.SATED, Reason.LOW_HEADROOM, min(reviews))
         if verdict.review_at is not None:  # a tolerated exposure may mature (1.3c)
             reviews.append(verdict.review_at)
+        if verdict.tolerated and self._light_on is not True:
+            # Rule 3.1: tolerance keeps a burning block, never starts one
+            # in front of someone; the episode's end is an input event.
+            return Decision(False, LightState.OBSERVED, Reason.VIEWERS, min(reviews))
         reviews.append(self._ledger.cap_instant(now, self._target_s))
         return Decision(True, LightState.LIT, verdict.reason, min(reviews))
